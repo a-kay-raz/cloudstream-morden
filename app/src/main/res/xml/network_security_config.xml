@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Batch 1: cleartext is denied by default (previously the app
+     shipped usesCleartextTraffic="true" with no config at all, so
+     any http:// URL — including credentials or session data in a
+     plugin/provider request — could travel unencrypted). The only
+     cleartext exception is loopback, which the app's own local
+     torrent server serves on 127.0.0.1 / localhost. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
+</network-security-config>

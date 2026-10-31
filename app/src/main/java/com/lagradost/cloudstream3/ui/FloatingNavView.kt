@@ -103,6 +103,9 @@ class FloatingNavView @JvmOverloads constructor(
         R.id.navigation_settings_general,
         R.id.navigation_settings_extensions,
         R.id.navigation_settings_plugins,
+        R.id.navigation_settings_sky,
+        R.id.navigation_settings_nuvio,
+        R.id.navigation_settings_stremio,
         R.id.navigation_test_providers,
     )
 

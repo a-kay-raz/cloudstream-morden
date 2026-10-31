@@ -84,6 +84,30 @@ object SkyHttp {
         .cookieJar(AppCookieJar({ CloudStreamApp.context }, "sky:repo"))
         .build()
 
+    /**
+     * Batch 1 caps: no response body is ever loaded unbounded.
+     * A Content-Length above the cap is rejected before any body
+     * bytes are read, and a body that grows past the cap while
+     * streaming aborts the download (null result, nothing handed
+     * to a parser or written to disk).
+     */
+    const val MAX_TEXT_BYTES = 8 * 1024 * 1024
+    const val MAX_SKY_BYTES = 16 * 1024 * 1024
+
+    private fun readCapped(stream: java.io.InputStream, cap: Int): ByteArray? {
+        val out = java.io.ByteArrayOutputStream()
+        val buf = ByteArray(8192)
+        var total = 0
+        while (true) {
+            val read = stream.read(buf)
+            if (read < 0) break
+            total += read
+            if (total > cap) return null
+            out.write(buf, 0, read)
+        }
+        return out.toByteArray()
+    }
+
     /** GET text; finalUrl is the URL after redirects (shortcodes!). */
     fun get(url: String): Response? = runCatching {
         client.newCall(
@@ -91,9 +115,17 @@ object SkyHttp {
                 .header("User-Agent", SKY_USER_AGENT)
                 .build()
         ).execute().use { resp ->
+            val body = resp.body ?: return@use Response(
+                code = resp.code,
+                body = "",
+                finalUrl = resp.request.url.toString(),
+            )
+            if (body.contentLength() > MAX_TEXT_BYTES) return@use null
+            val bytes = body.byteStream().use { readCapped(it, MAX_TEXT_BYTES) }
+                ?: return@use null
             Response(
                 code = resp.code,
-                body = resp.body?.string().orEmpty(),
+                body = String(bytes, Charsets.UTF_8),
                 finalUrl = resp.request.url.toString(),
             )
         }
@@ -105,7 +137,10 @@ object SkyHttp {
                 .header("User-Agent", SKY_USER_AGENT)
                 .build()
         ).execute().use { resp ->
-            if (resp.code !in 200..299) null else resp.body?.bytes()
+            if (resp.code !in 200..299) return@use null
+            val body = resp.body ?: return@use null
+            if (body.contentLength() > MAX_SKY_BYTES) return@use null
+            body.byteStream().use { readCapped(it, MAX_SKY_BYTES) }
         }
     }.getOrNull()
 
@@ -122,6 +157,11 @@ object SkyRepository {
     private const val KEY_STORAGE = "sky_storage_v1"
     private const val KEY_COLLAPSED = "sky_collapsed_v1"
     private const val KEY_SECTIONS = "sky_sections_v1"
+
+    /** Batch 1: bounded .sky ZIP expansion (see installPlugin). */
+    private const val MAX_ZIP_ENTRIES = 100
+    private const val MAX_ZIP_ENTRY_BYTES = 8 * 1024 * 1024
+    private const val MAX_ZIP_TOTAL_BYTES = 16 * 1024 * 1024
 
     /**
      * Reserved key inside a plugin's settings object (8.82): a JSON
@@ -492,9 +532,25 @@ object SkyRepository {
     fun pluginDir(ctx: Context, repoKey: String, packageName: String): File =
         File(ctx.filesDir, "sky_code/$repoKey/${safeSegment(packageName)}")
 
+    /**
+     * Batch 1: plugin.js is only returned when it matches the hash
+     * recorded at install time. On a mismatch the code is refused
+     * (null, so the engine session fails to start and the code is
+     * never evaluated); the file is left on disk for the user to
+     * remove/reinstall rather than silently deleted. Records with
+     * no stored hash (pre-fix installs) cannot be verified — that
+     * gap is documented at [installPlugin], not hidden.
+     */
     fun readCode(ctx: Context, plugin: StoredSkyPlugin): String? {
         val file = File(pluginDir(ctx, plugin.repoKey, plugin.packageName), "plugin.js")
-        return if (file.exists()) runCatching { file.readText() }.getOrNull() else null
+        if (!file.exists()) return null
+        val bytes = runCatching { file.readBytes() }.getOrNull() ?: return null
+        if (plugin.sha256.isNotBlank() &&
+            sha256Hex(bytes) != plugin.sha256.lowercase()
+        ) {
+            return null
+        }
+        return String(bytes, Charsets.UTF_8)
     }
 
     fun sha256Hex(bytes: ByteArray): String =
@@ -505,6 +561,16 @@ object SkyRepository {
      * Downloads a .sky (ZIP of plugin.js + plugin.json), validates it
      * (both files present, packageName matches the listing, no path
      * escapes) and stores it. @return the install record, or null.
+     *
+     * Batch 1: ZIP entries are read streaming with per-entry, total
+     * and entry-count caps — nothing is written or evaluated when a
+     * cap is hit. When the listing supplies a sha256, plugin.js must
+     * match it before anything is written; on mismatch the install
+     * fails and no partial output is left behind. Listings without
+     * a hash are still installable (rejecting them would break
+     * existing hash-less repositories); their installs are then
+     * only protected by the install-time hash stored in the record
+     * and checked by [readCode] on load, not by the listing.
      */
     suspend fun installPlugin(
         ctx: Context,
@@ -517,20 +583,52 @@ object SkyRepository {
         var pluginJs: ByteArray? = null
         var pluginJson: String? = null
         val ok = runCatching {
+            var entryCount = 0
+            var totalUncompressed = 0L
             ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
                 while (true) {
                     val zipEntry = zip.nextEntry ?: break
+                    entryCount++
+                    if (entryCount > MAX_ZIP_ENTRIES) {
+                        throw IllegalStateException(".sky entry count over cap")
+                    }
                     val name = zipEntry.name.replace('\\', '/')
                     // Path-escape guard: reject the whole archive if
                     // any entry tries to leave the plugin directory.
-                    if (name.split('/').any { it == ".." }) {
+                    if (name.startsWith("/") ||
+                        name.split('/').any { it == ".." }
+                    ) {
                         throw IllegalStateException("path escape in .sky")
                     }
                     if (!zipEntry.isDirectory) {
                         when (name.substringAfterLast('/')) {
-                            "plugin.js" -> pluginJs = zip.readBytes()
-                            "plugin.json" -> pluginJson =
-                                zip.readBytes().toString(Charsets.UTF_8)
+                            "plugin.js", "plugin.json" -> {
+                                val out =
+                                    java.io.ByteArrayOutputStream()
+                                val buf = ByteArray(8192)
+                                var entryBytes = 0
+                                while (true) {
+                                    val read = zip.read(buf)
+                                    if (read < 0) break
+                                    entryBytes += read
+                                    totalUncompressed += read
+                                    if (entryBytes > MAX_ZIP_ENTRY_BYTES ||
+                                        totalUncompressed > MAX_ZIP_TOTAL_BYTES
+                                    ) {
+                                        throw IllegalStateException(
+                                            ".sky entry over cap"
+                                        )
+                                    }
+                                    out.write(buf, 0, read)
+                                }
+                                if (name.substringAfterLast('/') == "plugin.js") {
+                                    pluginJs = out.toByteArray()
+                                } else {
+                                    pluginJson = out.toString(
+                                        Charsets.UTF_8.name()
+                                    )
+                                }
+                            }
                         }
                     }
                     zip.closeEntry()
@@ -545,6 +643,13 @@ object SkyRepository {
             SkyParse.parsePluginManifest(JSONObject(jsonText))
         }.getOrNull() ?: return@withContext null
         if (manifest.packageName != entry.packageName) return@withContext null
+        // Verify against the listing hash BEFORE writing anything.
+        val computedSha = sha256Hex(js)
+        if (!entry.sha256.isNullOrBlank() &&
+            entry.sha256.lowercase() != computedSha
+        ) {
+            return@withContext null
+        }
 
         val repoKey = repoKeyFor(sourceRepoUrl)
         val dir = pluginDir(ctx, repoKey, entry.packageName)
@@ -563,7 +668,7 @@ object SkyRepository {
             // A fresh install is a deliberate act: start enabled.
             // A re-install (update) keeps the user's previous choice.
             enabled = previous?.enabled ?: true,
-            sha256 = sha256Hex(js),
+            sha256 = computedSha,
             manifestJson = jsonText,
             addedAt = previous?.addedAt ?: System.currentTimeMillis(),
         )
@@ -592,9 +697,26 @@ object SkyRepository {
     fun pluginSettings(ctx: Context, packageName: String): JSONObject =
         settingsRoot(ctx).optJSONObject(packageName) ?: JSONObject()
 
+    /**
+     * Batch 1: MERGE, don't replace. The settings sheet only renders
+     * a subset of keys (schema fields present at open time, plus the
+     * base-URL and sub-provider keys), so replacing the whole object
+     * silently deleted every other saved key — including keys saved
+     * when the manifest was different or absent. Here the existing
+     * object is the base and only keys present in [values] are
+     * overwritten; a JSON null value in [values] removes that key,
+     * which is how the sheet clears a rendered field (e.g. a blank
+     * base URL) without touching unrendered keys.
+     */
     fun savePluginSettings(ctx: Context, packageName: String, values: JSONObject) {
         val root = settingsRoot(ctx)
-        root.put(packageName, values)
+        val merged = JSONObject(pluginSettings(ctx, packageName).toString())
+        val keys = values.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            if (values.isNull(key)) merged.remove(key) else merged.put(key, values.opt(key))
+        }
+        root.put(packageName, merged)
         prefs(ctx).edit().putString(KEY_SETTINGS, root.toString()).apply()
     }
 

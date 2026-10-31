@@ -12,15 +12,24 @@ package com.lagradost.cloudstream3.nuvio
  * use the async bindings `nuvioFetchAsync` / `nuvioSleepAsync`, which
  * hand real promises back to the script.
  *
- * Placeholders __NUVIO_SETTINGS__ / __NUVIO_TMDB_KEY__ are substituted
- * by the engine with JSON literals before evaluation.
+ * Placeholder __NUVIO_SETTINGS__ is substituted by the engine with
+ * a JSON literal before evaluation.
+ *
+ * Batch 1: the user's TMDB key is NEVER injected into plugin JS.
+ * Previously it was exposed as G.TMDB_API_KEY / process.env, so any
+ * third-party scraper could read it and exfiltrate it. Scrapers do
+ * not need it: the host resolves the TMDB id itself and passes it
+ * as a call argument (see NuvioStreamService / NuvioEngine.run),
+ * and host-side TMDB calls still use the key from prefs directly.
+ * G.TMDB_API_KEY / G.TMDB_KEY / process.env.TMDB_API_KEY are
+ * therefore always null here.
  */
 object NuvioPolyfill {
 
-    fun build(settingsJson: String, tmdbKeyJson: String): String =
+    fun build(settingsJson: String): String =
         SOURCE
             .replace("__NUVIO_SETTINGS__", settingsJson)
-            .replace("__NUVIO_TMDB_KEY__", tmdbKeyJson)
+            .replace("__NUVIO_TMDB_KEY__", "null")
 
     private const val SOURCE = """
 (function () {

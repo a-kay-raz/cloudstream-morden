@@ -18,11 +18,14 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
+import java.net.Inet4Address
+import java.net.InetAddress
 import java.security.MessageDigest
 import javax.crypto.Cipher
 import javax.crypto.Mac
@@ -74,8 +77,81 @@ class SkyHostBridge(
         }
     }
 
+    /**
+     * Batch 1 SSRF guard: a plugin-supplied URL must be http(s) and
+     * must resolve ONLY to public addresses. Loopback, RFC 1918 /
+     * unique-local, link-local, multicast, unspecified and other
+     * reserved ranges are rejected, as is "localhost". The check
+     * runs on the initial URL and again after every redirect (see
+     * doHttp's manual redirect loop). Residual gap, stated honestly:
+     * OkHttp re-resolves the host at connect time, so a DNS record
+     * that flips between validation and connect (rebinding) is not
+     * pinned by this check — pinning would need a custom DNS /
+     * socket factory, which is out of scope for this fix.
+     */
+    private fun validatePublicUrl(urlString: String): okhttp3.HttpUrl {
+        val url = urlString.toHttpUrlOrNull()
+            ?: throw IllegalArgumentException("invalid URL")
+        if (url.scheme != "http" && url.scheme != "https") {
+            throw IllegalArgumentException("URL scheme not allowed")
+        }
+        val host = url.host
+        if (host.equals("localhost", ignoreCase = true) ||
+            host.endsWith(".localhost", ignoreCase = true)
+        ) {
+            throw IllegalArgumentException("localhost URL not allowed")
+        }
+        val addresses = runCatching { InetAddress.getAllByName(host) }
+            .getOrNull()
+            ?: throw IllegalArgumentException("cannot resolve host")
+        if (addresses.isEmpty()) {
+            throw IllegalArgumentException("cannot resolve host")
+        }
+        for (address in addresses) {
+            if (!isPublicAddress(address)) {
+                throw IllegalArgumentException(
+                    "URL resolves to a non-public address"
+                )
+            }
+        }
+        return url
+    }
+
+    private fun isPublicAddress(address: InetAddress): Boolean {
+        if (address.isLoopbackAddress || address.isLinkLocalAddress ||
+            address.isSiteLocalAddress || address.isMulticastAddress ||
+            address.isAnyLocalAddress
+        ) {
+            return false
+        }
+        val b = address.address
+        if (address is Inet4Address && b.size == 4) {
+            val a0 = b[0].toInt() and 0xFF
+            val a1 = b[1].toInt() and 0xFF
+            val a2 = b[2].toInt() and 0xFF
+            if (a0 == 0) return false
+            // CGNAT 100.64.0.0/10, benchmarking 198.18.0.0/15,
+            // TEST-NET-1/2/3, 192.0.0.0/24, reserved 240.0.0.0/4.
+            if (a0 == 100 && a1 in 64..127) return false
+            if (a0 == 198 && a1 in 18..19) return false
+            if (a0 == 192 && a1 == 0 && a2 == 2) return false
+            if (a0 == 198 && a1 == 51 && a2 == 100) return false
+            if (a0 == 203 && a1 == 0 && a2 == 113) return false
+            if (a0 == 192 && a1 == 0) return false
+            if (a0 >= 240) return false
+        } else if (b.size == 16) {
+            // IPv6 documentation 2001:db8::/32 and discard 100::/64.
+            val isDoc = b[0] == 0x20.toByte() && b[1] == 0x01.toByte() &&
+                b[2] == 0x0d.toByte() && b[3] == 0xb8.toByte()
+            val isDiscard = b[0] == 0x00.toByte() && b[1] == 0x01.toByte()
+            if (isDoc || isDiscard) return false
+        }
+        return true
+    }
+
     private fun doHttp(p: JSONObject): JSONObject {
         val url = p.optString("url")
+        validatePublicUrl(url)
         val method = p.optString("method", "GET").uppercase()
         val builder = Request.Builder().url(url)
         var contentType: String? = null
@@ -149,59 +225,120 @@ class SkyHostBridge(
         val chainCookies = java.util.Collections.synchronizedList(
             mutableListOf<String>()
         )
+        // Batch 1: redirects are followed MANUALLY, never by OkHttp,
+        // so every hop's URL is re-validated by validatePublicUrl
+        // before it is fetched (a redirect to a LAN address is an
+        // SSRF otherwise, even when the first URL was public).
         val callClient = SkyHttp.client.newBuilder()
             .cookieJar(cookieJar)
+            .followRedirects(false)
+            .followSslRedirects(false)
             .addNetworkInterceptor { chain ->
                 val hop = chain.proceed(chain.request())
                 chainCookies.addAll(hop.headers.values("Set-Cookie"))
                 hop
             }
             .build()
-        val response = callClient.newCall(builder.build()).execute()
-        return response.use { resp ->
-            // SkyStream parity (8.80): the reference bridge exposes
-            // Set-Cookie to plugins as a header list — plugins keep
-            // their own cookie store from it (katdrama's locker chain
-            // silently stalls without it). 8.82: the list spans the
-            // whole redirect chain; 8.83: persistence moved to the
-            // AppCookieJar on the client, so no manual jar feed here.
-            val setCookies = chainCookies.toList()
-            val rawBytes = resp.body?.bytes() ?: ByteArray(0)
-            val capped = if (rawBytes.size > MAX_BODY_BYTES) {
-                rawBytes.copyOf(MAX_BODY_BYTES)
-            } else {
-                rawBytes
-            }
-            val charset = resp.body?.contentType()?.charset(Charsets.UTF_8)
-                ?: Charsets.UTF_8
-            val headersOut = JSONObject()
-            resp.headers.forEach { (name, value) ->
-                val key = name.lowercase()
-                if (key == "set-cookie") return@forEach
-                headersOut.put(
-                    key,
-                    if (headersOut.has(key)) {
-                        headersOut.optString(key) + ", " + value
-                    } else {
-                        value
+        var currentUrl = validatePublicUrl(url)
+        var redirectCount = 0
+        while (true) {
+            val response = callClient.newCall(builder.url(currentUrl).build()).execute()
+            var nextUrl: okhttp3.HttpUrl? = null
+            var isRedirect = false
+            val envelope = response.use { resp ->
+                val location = resp.header("Location")
+                isRedirect = resp.code in listOf(301, 302, 303, 307, 308) &&
+                    location != null
+                if (isRedirect) {
+                    if (++redirectCount > MAX_REDIRECTS) {
+                        throw IllegalStateException("too many redirects")
                     }
-                )
+                    if (resp.code == 303) builder.get()
+                    nextUrl = validatePublicUrl(
+                        currentUrl.resolve(location!!)?.toString()
+                            ?: throw IllegalArgumentException(
+                                "invalid redirect Location"
+                            )
+                    )
+                    null
+                } else {
+                    // SkyStream parity (8.80): the reference bridge
+                    // exposes Set-Cookie to plugins as a header list
+                    // — plugins keep their own cookie store from it
+                    // (katdrama's locker chain silently stalls without
+                    // it). 8.82: the list spans the whole redirect
+                    // chain; 8.83: persistence moved to the
+                    // AppCookieJar on the client, so no manual jar
+                    // feed here.
+                    val setCookies = chainCookies.toList()
+                    // Batch 1: stream with an 8 MB ABORT threshold.
+                    // Previously the whole body was downloaded and
+                    // then truncated to 8 MB yet returned with a 200
+                    // as if complete. Over the cap now throws, and
+                    // httpAsync turns that into a status-0 error
+                    // envelope — never a 200 with a partial body.
+                    // Content-Length is checked before reading so a
+                    // declared-oversize body costs no bandwidth.
+                    val body = resp.body
+                    val charset = body?.contentType()
+                        ?.charset(Charsets.UTF_8) ?: Charsets.UTF_8
+                    if ((body?.contentLength() ?: -1) > MAX_BODY_BYTES) {
+                        throw IllegalStateException(
+                            "response body exceeds 8 MB cap"
+                        )
+                    }
+                    val rawBytes = body?.byteStream()?.use { stream ->
+                        val out = java.io.ByteArrayOutputStream()
+                        val buf = ByteArray(8192)
+                        var total = 0
+                        while (true) {
+                            val read = stream.read(buf)
+                            if (read < 0) break
+                            total += read
+                            if (total > MAX_BODY_BYTES) {
+                                throw IllegalStateException(
+                                    "response body exceeds 8 MB cap"
+                                )
+                            }
+                            out.write(buf, 0, read)
+                        }
+                        out.toByteArray()
+                    } ?: ByteArray(0)
+                    val headersOut = JSONObject()
+                    resp.headers.forEach { (name, value) ->
+                        val key = name.lowercase()
+                        if (key == "set-cookie") return@forEach
+                        headersOut.put(
+                            key,
+                            if (headersOut.has(key)) {
+                                headersOut.optString(key) + ", " + value
+                            } else {
+                                value
+                            }
+                        )
+                    }
+                    if (setCookies.isNotEmpty()) {
+                        headersOut.put("set-cookie", JSONArray(setCookies.toList()))
+                    }
+                    // SkyStream parity (8.80): plugins read finalUrl
+                    // to learn where a redirect landed (the kmhd
+                    // /file/ -> /locked hop); without it their
+                    // chain-walkers stall.
+                    val finalUrl = resp.request.url.toString()
+                    JSONObject()
+                        .put("status", resp.code)
+                        .put("code", resp.code)
+                        .put("statusCode", resp.code)
+                        .put("body", String(rawBytes, charset))
+                        .put("headers", headersOut)
+                        .put("finalUrl", finalUrl)
+                        .put("url", finalUrl)
+                }
             }
-            if (setCookies.isNotEmpty()) {
-                headersOut.put("set-cookie", JSONArray(setCookies.toList()))
-            }
-            // SkyStream parity (8.80): plugins read finalUrl to learn
-            // where a redirect landed (the kmhd /file/ -> /locked
-            // hop); without it their chain-walkers stall.
-            val finalUrl = resp.request.url.toString()
-            JSONObject()
-                .put("status", resp.code)
-                .put("code", resp.code)
-                .put("statusCode", resp.code)
-                .put("body", String(capped, charset))
-                .put("headers", headersOut)
-                .put("finalUrl", finalUrl)
-                .put("url", finalUrl)
+            if (!isRedirect) return envelope
+                ?: throw IllegalStateException("empty response")
+            currentUrl = nextUrl
+                ?: throw IllegalStateException("missing redirect target")
         }
     }
 
@@ -219,6 +356,7 @@ class SkyHostBridge(
 
     companion object {
         private const val MAX_BODY_BYTES = 8 * 1024 * 1024
+        private const val MAX_REDIRECTS = 5
     }
 }
 
@@ -563,6 +701,13 @@ object SkyEngine {
  */
 object SkyNative {
 
+    /** Batch 1 crypto bounds (see asyncOp / aesDecrypt). */
+    private const val MAX_PBKDF2_ITERATIONS = 100_000
+    private const val MAX_PBKDF2_KEY_LENGTH = 64
+    private const val MAX_PASSWORD_CHARS = 100_000
+    private const val MAX_B64_INPUT = 8192
+    private const val MAX_AES_B64_INPUT = 10_700_000
+
     fun b64DecodeTolerant(s: String): ByteArray {
         var cleaned = s.replace(Regex("\\s"), "").replace('-', '+').replace('_', '/')
         while (cleaned.length % 4 != 0) cleaned += "="
@@ -607,12 +752,48 @@ object SkyNative {
                 data.optString("iv"),
                 data.optString("mode", "cbc"),
             )
+            // Batch 1: bound every plugin-controlled crypto
+            // parameter BEFORE the work starts. Unbounded
+            // iterations are a CPU DoS (each iteration is a full
+            // HMAC); an unbounded keyLength is an unbounded
+            // allocation. Out-of-range values are rejected, not
+            // silently clamped — silently changing crypto
+            // parameters would produce a key the plugin did not
+            // ask for.
             "crypto_pbkdf2" -> android.util.Base64.encodeToString(
                 pbkdf2Sha256(
-                    data.optString("password"),
-                    b64DecodeTolerant(data.optString("salt")),
-                    data.optInt("iterations", 10000),
-                    data.optInt("keyLength", 32),
+                    password = run {
+                        val password = data.optString("password")
+                        if (password.length > MAX_PASSWORD_CHARS) {
+                            throw IllegalArgumentException("pbkdf2 password too large")
+                        }
+                        password
+                    },
+                    salt = run {
+                        val saltB64 = data.optString("salt")
+                        if (saltB64.length > MAX_B64_INPUT) {
+                            throw IllegalArgumentException("pbkdf2 salt too large")
+                        }
+                        b64DecodeTolerant(saltB64)
+                    },
+                    iterations = run {
+                        val iterations = data.optInt("iterations", 10000)
+                        if (iterations !in 1..MAX_PBKDF2_ITERATIONS) {
+                            throw IllegalArgumentException(
+                                "pbkdf2 iterations out of range"
+                            )
+                        }
+                        iterations
+                    },
+                    keyLen = run {
+                        val keyLength = data.optInt("keyLength", 32)
+                        if (keyLength !in 1..MAX_PBKDF2_KEY_LENGTH) {
+                            throw IllegalArgumentException(
+                                "pbkdf2 keyLength out of range"
+                            )
+                        }
+                        keyLength
+                    },
                 ),
                 android.util.Base64.NO_WRAP,
             )
@@ -621,13 +802,41 @@ object SkyNative {
     }
 
     private fun aesDecrypt(dataB64: String, keyB64: String, ivB64: String, mode: String): String {
+        // Batch 1: same bounds discipline as PBKDF2, checked before
+        // any decode/cipher work. AES keys are only 16/24/32 bytes
+        // (anything else fails cipher init anyway); a CBC IV must
+        // be exactly one block; GCM IVs are capped, not forced to
+        // 12 bytes, so non-standard-but-valid IVs still work.
+        // Ciphertext is capped at 8 MB decoded (input b64 capped
+        // first, so decoding itself cannot allocate unboundedly).
+        if (dataB64.length > MAX_AES_B64_INPUT ||
+            keyB64.length > MAX_B64_INPUT ||
+            ivB64.length > MAX_B64_INPUT
+        ) {
+            throw IllegalArgumentException("AES input too large")
+        }
         val keyBytes = b64DecodeTolerant(keyB64)
-        val cipher = when (mode.lowercase()) {
+        if (keyBytes.size !in listOf(16, 24, 32)) {
+            throw IllegalArgumentException("AES key length invalid")
+        }
+        val ivBytes = b64DecodeTolerant(ivB64)
+        val normalizedMode = mode.lowercase()
+        if (normalizedMode != "gcm" && normalizedMode != "ecb" &&
+            ivBytes.size != 16
+        ) {
+            throw IllegalArgumentException("AES CBC IV must be 16 bytes")
+        }
+        if (normalizedMode == "gcm" &&
+            (ivBytes.isEmpty() || ivBytes.size > 64)
+        ) {
+            throw IllegalArgumentException("AES GCM IV out of range")
+        }
+        val cipher = when (normalizedMode) {
             "gcm" -> Cipher.getInstance("AES/GCM/NoPadding").apply {
                 init(
                     Cipher.DECRYPT_MODE,
                     SecretKeySpec(keyBytes, "AES"),
-                    GCMParameterSpec(128, b64DecodeTolerant(ivB64)),
+                    GCMParameterSpec(128, ivBytes),
                 )
             }
             "ecb" -> Cipher.getInstance("AES/ECB/PKCS5Padding").apply {
@@ -637,7 +846,7 @@ object SkyNative {
                 init(
                     Cipher.DECRYPT_MODE,
                     SecretKeySpec(keyBytes, "AES"),
-                    IvParameterSpec(b64DecodeTolerant(ivB64)),
+                    IvParameterSpec(ivBytes),
                 )
             }
         }

@@ -2,17 +2,14 @@ package com.lagradost.cloudstream3.ui
 
 import android.os.Bundle
 import android.view.View
-import android.webkit.JavascriptInterface
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import androidx.fragment.app.FragmentActivity
 import androidx.navigation.fragment.findNavController
 import com.lagradost.cloudstream3.MainActivity
 import com.lagradost.cloudstream3.USER_AGENT
 import com.lagradost.cloudstream3.databinding.FragmentWebviewBinding
 import com.lagradost.cloudstream3.network.WebViewResolver
-import com.lagradost.cloudstream3.utils.AppContextUtils.loadRepository
 
 class WebviewFragment : BaseFragment<FragmentWebviewBinding>(
     BaseFragment.BindingCreator.Inflate(FragmentWebviewBinding::inflate)
@@ -44,7 +41,11 @@ class WebviewFragment : BaseFragment<FragmentWebviewBinding>(
         binding.webView.apply {
             WebViewResolver.webViewUserAgent = settings.userAgentString
 
-            addJavascriptInterface(RepoApi(activity), "RepoApi")
+            // Batch 1: no JavascriptInterface repo bridge. Any page
+            // could otherwise call installRepo() and add a repository
+            // without the user confirming it. Repo links in a page
+            // still work via shouldOverrideUrlLoading above, which
+            // routes through loadRepository()'s confirmation dialog.
             settings.javaScriptEnabled = true
             settings.userAgentString = USER_AGENT
             settings.domStorageEnabled = true
@@ -61,10 +62,4 @@ class WebviewFragment : BaseFragment<FragmentWebviewBinding>(
             }
     }
 
-    private class RepoApi(val activity: FragmentActivity?) {
-        @JavascriptInterface
-        fun installRepo(repoUrl: String) {
-            activity?.loadRepository(repoUrl)
-        }
-    }
 }

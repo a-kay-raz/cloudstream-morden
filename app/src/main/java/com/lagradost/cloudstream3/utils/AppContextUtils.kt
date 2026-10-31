@@ -520,6 +520,15 @@ object AppContextUtils {
         return data
     }
 
+    /**
+     * Batch 1: a repository is persisted ONLY after the user
+     * explicitly confirms it in [confirmRepositoryDialog]. Previously
+     * this persisted first and only then showed a dialog whose
+     * Dismiss button left the repository installed — so any web
+     * page or cloudstreamrepo:// deep link could install a repo
+     * drive-by. The confirmation dialog runs on the UI thread;
+     * declining (or dismissing) it persists nothing.
+     */
     fun Activity.loadRepository(url: String) {
         ioSafe {
             val repo = RepositoryManager.parseRepository(url) ?: return@ioSafe
@@ -528,15 +537,36 @@ object AppContextUtils {
                 repo.name,
                 url
             )
-            RepositoryManager.addRepository(data)
-            main {
-                showToast(
-                    getString(R.string.player_loaded_subtitles, repo.name),
-                    Toast.LENGTH_LONG
-                )
+            confirmRepositoryDialog(data)
+        }
+    }
+
+    fun Activity.confirmRepositoryDialog(repositoryData: RepositoryData) {
+        runOnUiThread {
+            AlertDialog.Builder(this).apply {
+                setTitle(repositoryData.name)
+                setMessage(R.string.download_all_plugins_from_repo)
+                setPositiveButton(R.string.open_downloaded_repo) { _, _ ->
+                    ioSafe {
+                        RepositoryManager.addRepository(repositoryData)
+                        main {
+                            showToast(
+                                getString(
+                                    R.string.player_loaded_subtitles,
+                                    repositoryData.name
+                                ),
+                                Toast.LENGTH_LONG
+                            )
+                        }
+                        afterRepositoryLoadedEvent.invoke(true)
+                        addRepositoryDialog(repositoryData)
+                    }
+                }
+                // Negative / dismissed: nothing is persisted, the
+                // repository is simply not added.
+                setNegativeButton(R.string.dismiss, null)
+                show().setDefaultFocus()
             }
-            afterRepositoryLoadedEvent.invoke(true)
-            addRepositoryDialog(data)
         }
     }
 

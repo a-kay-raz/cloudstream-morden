@@ -445,9 +445,12 @@ class SkyPluginsFragment : Fragment() {
         // the reference uses), whether or not the schema declares
         // one. It writes through the schema's base-url key when
         // there is one, else the "base_url" override key — exactly
-        // what SkyRepository.effectiveBaseUrl reads. A blank value,
-        // or the manifest default re-entered, writes nothing: saving
-        // replaces the settings object, so an old override drops.
+        // what SkyRepository.effectiveBaseUrl reads. Batch 1: a
+        // blank value, or the manifest default re-entered, writes
+        // JSON null, which savePluginSettings interprets as "remove
+        // this key" — so clearing the field still drops an old
+        // override, while keys the sheet never rendered survive
+        // the save (merge, not replace).
         if (manifest != null) {
             val baseKey = fields.firstOrNull { it.isBaseUrl }?.key ?: "base_url"
             column.addView(TextView(ctx).apply {
@@ -466,6 +469,8 @@ class SkyPluginsFragment : Fragment() {
                 val value = baseEdit.text?.toString()?.trim().orEmpty()
                 if (value.isNotBlank() && value != manifest.baseUrl) {
                     values.put(baseKey, value)
+                } else {
+                    values.put(baseKey, JSONObject.NULL)
                 }
             }
         }
@@ -667,7 +672,11 @@ class SkyPluginsFragment : Fragment() {
             cornerRadius = dp(20)
         }
         // 8.89: Save is the primary action — standard red pill.
+        // Batch 1: with no manifest there is no schema to save
+        // against, so Save is disabled rather than writing (and,
+        // before the merge fix, wiping) settings blind.
         val saveButton = MaterialButton(ctx).apply {
+            isEnabled = manifest != null
             setText(R.string.nuvio_settings_save)
             backgroundTintList = ContextCompat.getColorStateList(
                 ctx, R.color.colorPrimaryRed

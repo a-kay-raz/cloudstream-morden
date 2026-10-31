@@ -57,6 +57,14 @@ data class SkyPluginManifest(
     val categories: List<String>,
     /** The .sky download URL (listing entries only; plugin.json has none). */
     val downloadUrl: String,
+    /**
+     * Batch 1: expected sha256 (hex) of plugin.js as listed by the
+     * repository, when the listing supplies one ("sha256" or "hash").
+     * Null means the listing carries no hash: installs of such
+     * plugins are NOT hash-verified (see installPlugin) — that
+     * remaining gap is documented there, not silently papered over.
+     */
+    val sha256: String?,
     /** 0 down / 1 ok / 2 slow / 3 beta, as listed. */
     val status: Int,
     val subProviders: List<SkySubProvider>,
@@ -252,6 +260,10 @@ object SkyParse {
             languages = languages,
             categories = categories,
             downloadUrl = json.optString("url"),
+            sha256 = (json.optStringOrNull("sha256")
+                ?: json.optStringOrNull("hash"))
+                ?.lowercase()
+                ?.takeIf { it.matches(Regex("[0-9a-f]{64}")) },
             status = json.optInt("status", 1),
             subProviders = subs,
             settings = settings,

@@ -28,9 +28,14 @@ import org.json.JSONObject
  *
  * Instances are namespaced ("sky:<packageName>", "nuvio:<id>",
  * "native", ...): namespaces are fully isolated and persist to one
- * SharedPreferences string each. Session cookies are persisted too
- * (restored with an open-ended expiry) — that is deliberate: a
- * plugin's verify/handshake cookie must not die with the process.
+ * SharedPreferences string each. Batch 1: only PERSISTENT cookies
+ * (ones with a real expiry) are persisted. Session cookies stay
+ * in-memory for the life of the process and are never written to
+ * disk or resurrected with an open-ended expiry — previously a
+ * session cookie was restored with expiresAt=Long.MAX_VALUE, i.e.
+ * silently promoted to a permanent credential. A plugin whose
+ * verify/handshake cookie must survive a restart will now have to
+ * redo its handshake; that is the intended trade-off.
  *
  * Thread safety: every store access is synchronized on one lock.
  * The store is capped per namespace; on overflow the oldest entries
@@ -115,13 +120,16 @@ class AppCookieJar(
                 val domain = obj.optString("domain")
                 if (name.isEmpty() || domain.isEmpty()) continue
                 val persistent = obj.optBoolean("persistent", false)
-                val expiresAt = obj.optLong("expiresAt", Long.MAX_VALUE)
-                if (persistent && expiresAt <= now) continue
+                // Batch 1: legacy persisted session entries are
+                // skipped, never promoted to a permanent expiry.
+                if (!persistent) continue
+                val expiresAt = obj.optLong("expiresAt", -1L)
+                if (expiresAt <= now) continue
                 val builder = Cookie.Builder()
                     .name(name)
                     .value(obj.optString("value"))
                     .path(obj.optString("path").ifEmpty { "/" })
-                    .expiresAt(if (persistent) expiresAt else Long.MAX_VALUE)
+                    .expiresAt(expiresAt)
                 if (obj.optBoolean("hostOnly", false)) {
                     builder.hostOnlyDomain(domain)
                 } else {
@@ -158,11 +166,15 @@ class AppCookieJar(
         return changed
     }
 
-    /** Serializes the whole store as one JSON array string. */
+    /**
+     * Serializes the store as one JSON array string. Batch 1:
+     * session (non-persistent) cookies are NOT written — they live
+     * in memory only (see the class doc).
+     */
     private fun persistLocked() {
         val ctx = contextProvider() ?: return
         val arr = JSONArray()
-        for (cookie in store.values) {
+        for (cookie in store.values.filter { it.persistent }) {
             arr.put(
                 JSONObject()
                     .put("name", cookie.name)

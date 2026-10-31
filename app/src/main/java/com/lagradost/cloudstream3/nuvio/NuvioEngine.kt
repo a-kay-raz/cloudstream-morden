@@ -353,11 +353,14 @@ object NuvioEngine {
                         }
                     }
                 )
+                // Batch 1: tmdbKey is deliberately NOT forwarded
+                // to the polyfill — the user's TMDB key must never
+                // reach plugin JS (see NuvioPolyfill). The parameter
+                // is retained so existing callers need no change;
+                // host-side TMDB work uses the key directly, in
+                // NuvioStreamService / NuvioTmdb, not via the script.
                 evaluate<Any?>(
-                    NuvioPolyfill.build(
-                        settings.toString(),
-                        tmdbKey?.let { JSONObject.quote(it) } ?: "null"
-                    ),
+                    NuvioPolyfill.build(settings.toString()),
                     "nuvio-polyfill.js"
                 )
                 evaluate<Any?>(wrapScraper(code), "scraper.js")
