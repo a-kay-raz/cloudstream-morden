@@ -279,6 +279,23 @@ class HomeViewModel : ViewModel() {
 
     val isCustomActive: Boolean get() = customRoutes.isNotEmpty()
 
+    // Batch 3: the expanded sheet submits expandAndReturn's
+    // lists raw (HomeFragment's scroll listener), bypassing the
+    // applyHomeCategories() filter the main rows go through —
+    // so page-2+ items, including adult items filtered from the
+    // main row, leaked into the sheet when Family Mode was on.
+    // Filtering here, on both expand paths, covers the sheet
+    // and every _page observer. The underlying lists are
+    // rebuilt on the next load if Family Mode is turned off.
+    private fun filterExpandedForFamily() {
+        if (!FamilyMode.isEnabled()) return
+        expandable.values.forEach { entry ->
+            entry.list.list = entry.list.list.filterNot {
+                FamilyMode.isAdultItem(it)
+            }
+        }
+    }
+
     suspend fun expandAndReturn(name: String): ExpandableHomepageList? {
         if (lock.contains(name)) return null
         lock += name
@@ -312,6 +329,7 @@ class HomeViewModel : ViewModel() {
                     }
                 }
             }
+            filterExpandedForFamily()
             _page.postValue(Resource.Success(expandable))
             lock -= name
             return expandable[name]
@@ -350,6 +368,7 @@ class HomeViewModel : ViewModel() {
                     current.hasNext = false
                 }
             }
+            filterExpandedForFamily()
             _page.postValue(Resource.Success(expandable))
         }
 
@@ -562,12 +581,24 @@ class HomeViewModel : ViewModel() {
                 list.entries.groupingBy { it.pageName }.eachCount()
             val built =
                 LinkedHashMap<String, ExpandableHomepageList>()
+            // Batch 3: an entry skipped here (provider not
+            // loaded yet, no main page, failed load, or no
+            // matching row) must not be pinned as complete —
+            // see the signature gate below.
+            var allEntriesResolved = true
             for (entry in list.entries) {
+                val builtBefore = built.size
                 try {
                     val api = getApiFromNameNull(entry.apiName)
-                        ?: continue
+                    if (api == null) {
+                        allEntriesResolved = false
+                        continue
+                    }
                     val repoX = APIRepository(api)
-                    if (!repoX.hasMainPage) continue
+                    if (!repoX.hasMainPage) {
+                        allEntriesResolved = false
+                        continue
+                    }
                     // Phase 8.46: dynamic entries (provider
                     // declares no mainPage) load the whole
                     // homepage and pick their category by name;
@@ -579,13 +610,19 @@ class HomeViewModel : ViewModel() {
                             it.name == entry.pageName
                         }
                     }
-                    if (!entry.dynamic && idx < 0) continue
+                    if (!entry.dynamic && idx < 0) {
+                        allEntriesResolved = false
+                        continue
+                    }
                     val res = if (entry.dynamic) {
                         repoX.getMainPage(1, null)
                     } else {
                         repoX.getMainPage(1, idx)
                     }
-                    if (res !is Resource.Success) continue
+                    if (res !is Resource.Success) {
+                        allEntriesResolved = false
+                        continue
+                    }
                     res.value.filterNotNull().forEach { home ->
                         home.items.filter { it.name == entry.pageName }
                             .forEach { hl ->
@@ -616,7 +653,11 @@ class HomeViewModel : ViewModel() {
                     }
                 } catch (e: Exception) {
                     logError(e)
+                    allEntriesResolved = false
                 }
+                // A successful load that contains no row for
+                // this entry still leaves the entry missing.
+                if (built.size == builtBefore) allEntriesResolved = false
             }
             expandable.clear()
             expandable.putAll(built)
@@ -627,7 +668,16 @@ class HomeViewModel : ViewModel() {
                 _page.postValue(Resource.Loading())
                 return@ioSafe
             }
-            loadedCustomSignature = customSignature(list)
+            // Batch 3: only pin the signature when every entry
+            // resolved. A partial load still posts Success with
+            // the rows it has, but leaving the signature unset
+            // means reloadStored() does not early-return on a
+            // signature match, so the missing provider's row is
+            // retried on the next reload instead of never
+            // appearing until a force reload or restart.
+            if (allEntriesResolved) {
+                loadedCustomSignature = customSignature(list)
+            }
             _page.postValue(Resource.Success(expandable))
 
             // Phase 8.47: the hero used to wait for up to 3

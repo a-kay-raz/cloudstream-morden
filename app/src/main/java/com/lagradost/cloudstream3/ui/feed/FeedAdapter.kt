@@ -67,9 +67,7 @@ class FeedAdapter(
     ) {
         val index = HashMap<String, Int>(currentList.size)
         currentList.forEachIndexed { i, entry ->
-            val key = MetadataResolver.keyFor(
-                entry.response.name, MetadataResolver.yearOf(entry.response)
-            )
+            val key = MetadataResolver.keyFor(entry.response)
             if (!index.containsKey(key)) index[key] = i
         }
         ratingIndex = index
@@ -164,9 +162,7 @@ class FeedAdapter(
             // Phase 8.56: meta line gains the rating (provider
             // score, else the universal TMDB/IMDb cache) and a
             // DUB/SUB label when the provider declares one.
-            val ratingKey = MetadataResolver.keyFor(
-                response.name, MetadataResolver.yearOf(response)
-            )
+            val ratingKey = MetadataResolver.keyFor(response)
             val rating = ratingOverrides[ratingKey]
                 ?: MetadataResolver.cachedFor(context, response)
             if (rating == null && response.score == null &&

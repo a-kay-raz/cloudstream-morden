@@ -54,9 +54,20 @@ fun goldStarText(text: String): CharSequence {
  * both years are known, agree within a year. No key, no lookup.
  */
 object MetadataResolver {
-    private const val PREFS = "universal_ratings_v1"
+    // Batch 3: v2 invalidates every v1 entry. v1 ratings were
+    // cached under substring title matching and kind-less keys,
+    // so wrong ratings (remake/sequel, movie-vs-TV collisions)
+    // would otherwise be served forever. The v1 file is simply
+    // orphaned; items re-resolve on demand under the new keys.
+    private const val PREFS = "universal_ratings_v2"
     const val TMDB_KEY_PREF = "tmdb_api_key"
     const val OMDB_KEY_PREF = "omdb_api_key"
+
+    // Batch 3: even a correctly matched rating goes stale
+    // (re-ratings, corrected TMDB data). Ratings older than
+    // this are dropped on read and re-resolved.
+    private const val RATING_TTL_MS = 90L * 24 * 60 * 60 * 1000
+    private fun ratingTimestampKey(key: String) = "ts:$key"
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val semaphore = Semaphore(3)
@@ -131,8 +142,8 @@ object MetadataResolver {
         null
     }
 
-    fun metaCached(context: Context?, rawTitle: String, year: Int?): Meta? {
-        val key = cacheKey(SearchResultBuilder.cleanPosterTitle(rawTitle), year)
+    fun metaCached(context: Context?, rawTitle: String, year: Int?, tv: Boolean): Meta? {
+        val key = cacheKey(SearchResultBuilder.cleanPosterTitle(rawTitle), year, tv)
         metaMemory[key]?.let { return it }
         if (context == null) return null
         val stored = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -144,7 +155,7 @@ object MetadataResolver {
 
     /** The cached metadata for a search response, if resolved. */
     fun metaCachedFor(context: Context?, response: SearchResponse): Meta? =
-        metaCached(context, response.name, yearOf(response))
+        metaCached(context, response.name, yearOf(response), isTv(response))
 
     private suspend fun storeMeta(context: Context, key: String, meta: Meta) {
         if (meta.genres.isEmpty() && meta.language == null &&
@@ -169,12 +180,23 @@ object MetadataResolver {
             !prefs.getString(OMDB_KEY_PREF, null).isNullOrBlank()
     }
 
-    private fun cacheKey(title: String, year: Int?): String =
-        normalize(title) + "|" + (year?.toString() ?: "")
+    // Batch 3: the kind is part of the key — a movie and a TV
+    // series with the same normalised title and year must not
+    // share one cached rating.
+    private fun cacheKey(title: String, year: Int?, tv: Boolean): String =
+        normalize(title) + "|" + (year?.toString() ?: "") + "|" +
+            if (tv) "tv" else "movie"
 
     /** The listener/cache key for a raw provider title + year. */
-    fun keyFor(rawTitle: String, year: Int?): String =
-        cacheKey(SearchResultBuilder.cleanPosterTitle(rawTitle), year)
+    fun keyFor(rawTitle: String, year: Int?, tv: Boolean): String =
+        cacheKey(SearchResultBuilder.cleanPosterTitle(rawTitle), year, tv)
+
+    /** The listener/cache key for a search response. */
+    fun keyFor(response: SearchResponse): String =
+        cacheKey(
+            SearchResultBuilder.cleanPosterTitle(response.name),
+            yearOf(response), isTv(response)
+        )
 
     private fun normalize(title: String): String =
         title.lowercase(Locale.US)
@@ -190,13 +212,37 @@ object MetadataResolver {
         else -> null
     }
 
-    private fun isTv(response: SearchResponse): Boolean = when (response.type) {
+    fun isTv(response: SearchResponse): Boolean = isTv(response.type)
+
+    fun isTv(type: TvType?): Boolean = when (type) {
         TvType.TvSeries, TvType.AsianDrama, TvType.Anime, TvType.OVA -> true
         else -> false
     }
 
-    fun cached(context: Context?, rawTitle: String, year: Int?): String? {
-        val key = cacheKey(SearchResultBuilder.cleanPosterTitle(rawTitle), year)
+    /** Batch 3: true when the stored rating for [key] is past
+     * its TTL (or, equivalently, its timestamp is missing only
+     * for entries this build never wrote — those are treated as
+     * fresh so a partial store path cannot evict on every read).
+     * Expired entries are evicted, never served. */
+    private fun isRatingExpired(context: Context, key: String): Boolean {
+        val stored = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getLong(ratingTimestampKey(key), 0L)
+        if (stored <= 0L) return false
+        return System.currentTimeMillis() - stored > RATING_TTL_MS
+    }
+
+    private fun evictRating(context: Context, key: String) {
+        memory.remove(key)
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().remove(key).remove(ratingTimestampKey(key)).apply()
+    }
+
+    fun cached(context: Context?, rawTitle: String, year: Int?, tv: Boolean): String? {
+        val key = cacheKey(SearchResultBuilder.cleanPosterTitle(rawTitle), year, tv)
+        if (context != null && isRatingExpired(context, key)) {
+            evictRating(context, key)
+            return null
+        }
         memory[key]?.let { return it }
         if (context == null) return null
         val stored = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -208,7 +254,7 @@ object MetadataResolver {
     /** Convenience for card binds: provider score wins, else cache. */
     fun cachedFor(context: Context?, response: SearchResponse): String? {
         response.score?.toStringNull(0.1, 10, 1)?.let { return it }
-        return cached(context, response.name, yearOf(response))
+        return cached(context, response.name, yearOf(response), isTv(response))
     }
 
     fun resolve(context: Context, response: SearchResponse) {
@@ -220,8 +266,12 @@ object MetadataResolver {
         val title = SearchResultBuilder.cleanPosterTitle(rawTitle)
         if (title.isBlank() || TitleResolver.isIdLike(title)) return
         if (!hasAnyKey(context)) return
-        val key = cacheKey(title, year)
-        if (memory.containsKey(key)) return
+        val key = cacheKey(title, year, tv)
+        // Batch 3: the early return must not serve an expired
+        // rating — evict it and fall through to re-resolve.
+        if (isRatingExpired(context, key)) {
+            evictRating(context, key)
+        } else if (memory.containsKey(key)) return
         synchronized(misses) { if (key in misses) return }
         synchronized(inFlight) { if (!inFlight.add(key)) return }
         val appContext = context.applicationContext
@@ -235,7 +285,11 @@ object MetadataResolver {
                     if (rating != null) {
                         memory[key] = rating
                         appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                            .edit().putString(key, rating).apply()
+                            .edit().putString(key, rating)
+                            .putLong(
+                                ratingTimestampKey(key),
+                                System.currentTimeMillis()
+                            ).apply()
                         val snapshot = synchronized(listeners) { listeners.toList() }
                         withContext(Dispatchers.Main) {
                             snapshot.forEach { it(key, rating) }
@@ -341,11 +395,15 @@ object MetadataResolver {
         return json.optString("Response") == "True"
     }
 
+    // Batch 3: exact normalised equality only. The old
+    // substring rule let "Batman" match "The Batman" and a
+    // title match a sequel/remake, and the first such hit was
+    // then cached persistently.
     private fun titlesMatch(candidate: String, wanted: String): Boolean {
         val a = normalize(candidate)
         val b = normalize(wanted)
         if (a.isEmpty() || b.isEmpty()) return false
-        return a == b || a.contains(b) || b.contains(a)
+        return a == b
     }
 
     private suspend fun tmdb(
@@ -355,10 +413,16 @@ object MetadataResolver {
         val strict = tmdbOnce(apiKey, title, year, tv, enforceYear = true)
         if (strict.first != null) return strict
         // Phase 8.71: a wrong provider year makes TMDB's own year
-        // filter return zero results - retry unfiltered and accept
-        // the best title match regardless of year.
+        // filter return zero results, so retry with an unfiltered
+        // query — but Batch 3 keeps the ±1-year gate on the
+        // candidate's own date, via yearGate. The loose pass must
+        // never accept a different-year remake/sequel on title
+        // alone (now exact-matched, year-gated).
         if (year != null) {
-            val loose = tmdbOnce(apiKey, title, null, tv, enforceYear = false)
+            val loose = tmdbOnce(
+                apiKey, title, null, tv,
+                enforceYear = true, yearGate = year
+            )
             return loose.first to (loose.second ?: strict.second)
         }
         return strict
@@ -369,7 +433,13 @@ object MetadataResolver {
         title: String,
         year: Int?,
         tv: Boolean,
-        enforceYear: Boolean
+        enforceYear: Boolean,
+        // Batch 3: the year the candidate's own date is gated
+        // against. Normally the query year; the loose pass
+        // queries unfiltered (year = null) but still gates
+        // against the wanted year, so it cannot accept a
+        // different-year remake/sequel.
+        yearGate: Int? = null
     ): Pair<String?, Meta?> {
         val kind = if (tv) "tv" else "movie"
         val query = URLEncoder.encode(title, "UTF-8")
@@ -402,8 +472,9 @@ object MetadataResolver {
                 if (tv) "first_air_date" else "release_date"
             )
             val candidateYear = dateText.take(4).toIntOrNull()
-            if (enforceYear && year != null && candidateYear != null &&
-                kotlin.math.abs(candidateYear - year) > 1
+            val gateYear = yearGate ?: year
+            if (enforceYear && gateYear != null && candidateYear != null &&
+                kotlin.math.abs(candidateYear - gateYear) > 1
             ) continue
             if (harvested == null) harvested = metaFromTmdbItem(item, tv)
             val votes = item.optInt("vote_count", 0)
@@ -445,16 +516,19 @@ object MetadataResolver {
     ): Pair<String?, Meta?> {
         val first = omdbOnce(apiKey, title, year)
         if (first.first != null) return first
-        // Phase 8.71: same wrong-year trap as TMDB - retry yearless.
+        // Phase 8.71: same wrong-year trap as TMDB - retry yearless,
+        // but Batch 3 still gates the returned Year within ±1, as
+        // with the TMDB loose pass.
         if (year != null) {
-            val loose = omdbOnce(apiKey, title, null)
+            val loose = omdbOnce(apiKey, title, null, yearGate = year)
             return loose.first to (loose.second ?: first.second)
         }
         return first
     }
 
     private suspend fun omdbOnce(
-        apiKey: String, title: String, year: Int?
+        apiKey: String, title: String, year: Int?,
+        yearGate: Int? = null
     ): Pair<String?, Meta?> {
         val query = URLEncoder.encode(title, "UTF-8")
         val yearParam = if (year != null) "&y=$year" else ""
@@ -465,6 +539,15 @@ object MetadataResolver {
         if (json.optString("Response") != "True") return null to null
         val candidate = json.optString("Title")
         if (!titlesMatch(candidate, title)) return null to null
+        // Batch 3: OMDb returns a single best match for an exact
+        // title, which may still be a different-year remake —
+        // gate its Year within ±1 of the wanted year (the query
+        // year itself, when present, already filters server-side).
+        val gateYear = yearGate ?: year
+        val returnedYear = json.optString("Year").take(4).toIntOrNull()
+        if (gateYear != null && returnedYear != null &&
+            kotlin.math.abs(returnedYear - gateYear) > 1
+        ) return null to null
         // Phase 8.88: the same payload carries Genre / Language /
         // Country — harvest them alongside the rating.
         val meta = metaFromOmdb(json)
@@ -507,8 +590,8 @@ object MetadataResolver {
         val title = SearchResultBuilder.cleanPosterTitle(response.name)
         if (title.isBlank() || TitleResolver.isIdLike(title)) return
         val year = yearOf(response)
-        if (metaCached(context, response.name, year) != null) return
-        val key = cacheKey(title, year)
+        if (metaCached(context, response.name, year, isTv(response)) != null) return
+        val key = cacheKey(title, year, isTv(response))
         synchronized(metaMisses) { if (key in metaMisses) return }
         synchronized(metaInFlight) { if (!metaInFlight.add(key)) return }
         val appContext = context.applicationContext

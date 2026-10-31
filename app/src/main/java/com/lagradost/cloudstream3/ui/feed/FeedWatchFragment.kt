@@ -992,7 +992,11 @@ class FeedWatchFragment : BaseFragment<FragmentFeedWatchBinding>(
         val year = page0?.year
         val headerRating = page0?.score?.toStringNull(0.5, 10)
             ?: com.lagradost.cloudstream3.ui.search.MetadataResolver
-                .cached(context, name, year)
+                .cached(
+                    context, name, year,
+                    com.lagradost.cloudstream3.ui.search.MetadataResolver
+                        .isTv(ep?.tvType ?: page0?.type)
+                )
         // Phase 8.71: teach the feed cards this item's real type, so
         // a card tagged "Anime" by its provider agrees with this
         // screen's "Movie" after the first open.

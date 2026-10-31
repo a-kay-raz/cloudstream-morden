@@ -389,7 +389,10 @@ class HomeParentItemAdapterPreview(
                 // showed no hero rating even with a TMDB key set.
                 val resolvedScore = scoreText
                     ?: homePreviewScore.context.let { ctx ->
-                        MetadataResolver.cached(ctx, item.name, item.year)
+                        MetadataResolver.cached(
+                            ctx, item.name, item.year,
+                            MetadataResolver.isTv(item.type)
+                        )
                             .also { hit ->
                                 if (hit == null) {
                                     MetadataResolver.resolve(

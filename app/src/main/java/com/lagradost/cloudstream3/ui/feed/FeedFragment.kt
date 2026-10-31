@@ -2193,9 +2193,7 @@ class FeedFragment : BaseFragment<FragmentFeedBinding>(
         entry.response.score?.toDouble(10)?.let {
             if (it > 0.0) return it
         }
-        val key = MetadataResolver.keyFor(
-            entry.response.name, MetadataResolver.yearOf(entry.response)
-        )
+        val key = MetadataResolver.keyFor(entry.response)
         val text = ratingsSnap[key]
             ?: context?.let { MetadataResolver.cachedFor(it, entry.response) }
         return text?.toDoubleOrNull()

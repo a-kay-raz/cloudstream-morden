@@ -610,6 +610,16 @@ object VideoDownloadManager {
 
         private var stopListener: (() -> Unit)? = null
 
+        /**
+         * Batch 3: set only by downloadDash. A Transformer export
+         * has no pause/resume path (unlike HLS, nothing polls
+         * IsPaused), so Pause on a DASH download cancels the
+         * export instead of pretending to pause it. Never set
+         * for HLS / plain downloads, whose Pause behaviour is
+         * unchanged.
+         */
+        var pauseCancelsExport: Boolean = false
+
         /** on cancel button pressed or failed invoke this once and only once */
         fun setOnStop(callback: (() -> Unit)) {
             stopListener = callback
@@ -623,7 +633,18 @@ object VideoDownloadManager {
             if (event.first == id) {
                 when (event.second) {
                     DownloadActionType.Pause -> {
-                        type = DownloadType.IsPaused
+                        if (pauseCancelsExport) {
+                            // Batch 3: DASH has no resume, so a
+                            // paused export is cancelled outright
+                            // (Transformer.cancel via stopListener)
+                            // and downloadDash reports it stopped,
+                            // never IsDone.
+                            type = DownloadType.IsStopped
+                            stopListener?.invoke()
+                            stopListener = null
+                        } else {
+                            type = DownloadType.IsPaused
+                        }
                     }
 
                     DownloadActionType.Stop -> {
@@ -1567,6 +1588,9 @@ object VideoDownloadManager {
                 basePath = basePath
             )
             metadata.setDownloadFileInfoTemplate(fileInfoTemplate)
+            // Batch 3: a DASH export cannot be paused/resumed,
+            // so Pause cancels it (see pauseCancelsExport).
+            metadata.pauseCancelsExport = true
 
             val pollJob = launch {
                 var last = 0L
@@ -1607,7 +1631,14 @@ object VideoDownloadManager {
                 }
                 metadata.onDelete()
                 stream.delete()
-                return@withContext metadata.failedStatus()
+                // Batch 3: never claim partial success here.
+                // The poll loop counts temp-file bytes into
+                // bytesWritten, but a failed export leaves no
+                // usable destination file and DASH has no resume
+                // path, so a >50MB temp file is not a partial
+                // download. Report a hard failure so the caller
+                // tries the next mirror / retries from scratch.
+                return@withContext DOWNLOAD_FAILED
             }
 
             fileStream = stream.open()
@@ -1641,7 +1672,10 @@ object VideoDownloadManager {
                 return@withContext DOWNLOAD_STOPPED
             }
             logError(t)
-            metadata.failedStatus()
+            // Batch 3: same rule as the export-failure branch
+            // above — a failed DASH copy is a hard failure, not
+            // a partial success based on temp-file bytes.
+            DOWNLOAD_FAILED
         } finally {
             fileStream?.closeQuietly()
             metadata.close()
@@ -2126,13 +2160,17 @@ object VideoDownloadManager {
         }
 
         private fun downloadTitlesMatch(candidate: String, wanted: String): Boolean {
+            // Batch 3: exact normalised equality only. The old
+            // substring rule matched "Batman" to "The Batman"
+            // and "Dune" to "Dune Part Two", so a cross-provider
+            // fallback could download the wrong title under the
+            // wanted title's name and folder.
             fun norm(s: String): String =
                 s.lowercase().replace(Regex("[^a-z0-9]+"), "")
             val a = norm(candidate)
             val b = norm(wanted)
             if (a.isEmpty() || b.isEmpty()) return false
-            return a == b || (b.length >= 3 && a.contains(b)) ||
-                (a.length >= 3 && b.contains(a))
+            return a == b
         }
 
         /** Phase 8.42: the same episode of the same title on
@@ -2160,10 +2198,14 @@ object VideoDownloadManager {
                     val sorted = page.episodes.sortedBy {
                         (it.season?.times(10_000) ?: 0) + (it.episode ?: 0)
                     }
+                    // Batch 3: no substitution — if this provider
+                    // lacks the exact requested season/episode,
+                    // fail instead of silently downloading its
+                    // first episode under the requested name.
                     val target = sorted.firstOrNull {
                         (season == null || it.season == season) &&
                             (it.episode ?: 0) == episode
-                    } ?: sorted.firstOrNull() ?: return null
+                    } ?: return null
                     val episodeIndex = target.episode ?: (sorted.indexOf(target) + 1)
                     val id = mainId + (target.season?.times(100_000) ?: 0) +
                         episodeIndex + 1
@@ -2184,9 +2226,10 @@ object VideoDownloadManager {
                         page.episodes.keys.firstOrNull()
                     } ?: return null
                     val list = page.episodes[dub].orEmpty()
+                    // Batch 3: no substitution, as for TV above.
                     val target = list.firstOrNull {
                         (it.episode ?: 0) == episode
-                    } ?: list.firstOrNull() ?: return null
+                    } ?: return null
                     val episodeIndex = target.episode ?: (list.indexOf(target) + 1)
                     val id = mainId + episodeIndex + dub.id * 1_000_000 +
                         (target.season?.times(10_000) ?: 0)
@@ -2243,6 +2286,12 @@ object VideoDownloadManager {
                             ?: languageToken(it.source)
                         if (token == wantedLang) 1 else 0
                     }
+                }.thenByDescending {
+                    // Batch 3: quality 0 means "unknown", not a
+                    // wanted 0p — distance-from-zero used to rank
+                    // 360p above 1080p. With no known target,
+                    // prefer the highest quality outright.
+                    if (wantedQuality <= 0) it.quality else 0
                 }.thenBy {
                     kotlin.math.abs(it.quality - wantedQuality)
                 }.thenByDescending { it.quality }

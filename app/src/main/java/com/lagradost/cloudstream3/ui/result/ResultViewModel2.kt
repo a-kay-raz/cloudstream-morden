@@ -237,7 +237,8 @@ fun txt(status: DubStatus?): UiText? {
  *  off background resolution for the next visit. */
 private fun universalRatingText(name: String, year: Int?, type: TvType): String? {
     val ctx = context ?: return null
-    MetadataResolver.cached(ctx, name, year)?.let { return it }
+    MetadataResolver.cached(ctx, name, year, MetadataResolver.isTv(type))
+        ?.let { return it }
     MetadataResolver.resolve(
         ctx, name, year,
         type == TvType.TvSeries || type == TvType.AsianDrama ||

@@ -186,7 +186,8 @@ object SearchResultBuilder {
             val ratingText = card.score?.toStringNull(0.1, 10, 1)
                 ?: rating?.context?.let { ctx ->
                     MetadataResolver.cached(
-                        ctx, card.name, MetadataResolver.yearOf(card)
+                        ctx, card.name, MetadataResolver.yearOf(card),
+                        MetadataResolver.isTv(card)
                     ).also { hit ->
                         if (hit == null) MetadataResolver.resolve(ctx, card)
                     }

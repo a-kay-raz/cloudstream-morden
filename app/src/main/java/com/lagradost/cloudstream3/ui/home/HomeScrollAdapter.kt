@@ -105,7 +105,10 @@ class HomeScrollAdapter(
                 val scrollCtx = binding.root.context
                 val ownScore = item.score?.toStringNull(0.1, 10, 1, false, '.')
                 val metaRating = ownScore
-                    ?: MetadataResolver.cached(scrollCtx, item.name, item.year)
+                    ?: MetadataResolver.cached(
+                        scrollCtx, item.name, item.year,
+                        MetadataResolver.isTv(item.type)
+                    )
                 if (metaRating != null) {
                     metaParts += "★ $metaRating"
                 } else {
