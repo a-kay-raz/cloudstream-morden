@@ -88,6 +88,20 @@ class FeedSearchFragment : BaseFragment<FragmentFeedSearchBinding>(
     private var deepJob: Job? = null
     private var currentQuery: String = ""
 
+    /** Batch 2: a resolved title can turn a previously
+     *  unmatchable pool entry into a hit (or a new trending
+     *  chip) — re-run the current search, or rebuild the
+     *  landing chips when no query is typed. The adapter
+     *  override refreshes the visible card title itself. */
+    private val searchTitleListener: (String, String) -> Unit = { url, title ->
+        adapter.setTitleOverride(url, title)
+        if (currentQuery.isEmpty()) {
+            binding?.let { buildTrendingChips(it) }
+        } else {
+            runSearch(currentQuery)
+        }
+    }
+
     override fun fixLayout(view: View) {
         fixSystemBarsPadding(
             view,
@@ -132,13 +146,24 @@ class FeedSearchFragment : BaseFragment<FragmentFeedSearchBinding>(
         }
 
         buildTrendingChips(binding)
+        TitleResolver.addListener(searchTitleListener)
         // Focus the field so the page opens ready to type.
         binding.feedSearchInput.requestFocus()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Batch 2 (mirrors SearchFragment.refreshTrendingChips
+        // on onResume): the pool may have finished building
+        // since this page was opened, so rebuild the chips
+        // instead of showing a blank landing all visit.
+        binding?.let { buildTrendingChips(it) }
     }
 
     override fun onDestroyView() {
         pendingDeep?.let { handler.removeCallbacks(it) }
         deepJob?.cancel()
+        TitleResolver.removeListener(searchTitleListener)
         super.onDestroyView()
     }
 
@@ -260,9 +285,20 @@ class FeedSearchFragment : BaseFragment<FragmentFeedSearchBinding>(
                 else -> -1
             }
         }
+        val ctx = context
         return pool.mapNotNull { entry ->
-            val t = tier(entry.response.name)
-            if (t < 0) null else entry to t
+            // Batch 2: match the title the card actually
+            // shows — the resolved title when one landed, else
+            // the card's display title — as well as the raw
+            // provider name, and keep the best tier found.
+            val candidates = listOfNotNull(
+                entry.response.name,
+                TitleResolver.cached(ctx, entry.response.url),
+                FeedAdapter.displayTitle(entry.response.name, entry.response.url)
+            )
+            val t = candidates.mapNotNull { tier(it).takeIf { it >= 0 } }
+                .minOrNull() ?: return@mapNotNull null
+            entry to t
         }.sortedBy { it.second }.map { it.first }
     }
 

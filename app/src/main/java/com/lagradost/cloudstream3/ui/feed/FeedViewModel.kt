@@ -111,6 +111,12 @@ class FeedViewModel(application: Application) : AndroidViewModel(application) {
     // Phase 8.99: stale-while-revalidate state. [freshPublishSeen]
     // flips on the first REAL publish so a cache read that lands
     // late can never overwrite fresher pool state.
+    /** Batch 2: serialises the cache paint's check-assign-post
+     *  against publish()'s assign-post, so a publish can never
+     *  land between the paint's fresh check and its post and
+     *  leave stale paint as the final state. */
+    private val paintPublishMutex = Mutex()
+
     @Volatile
     private var freshPublishSeen = false
     private var cachePaintRequested = false
@@ -137,12 +143,20 @@ class FeedViewModel(application: Application) : AndroidViewModel(application) {
         cachePaintRequested = true
         viewModelScope.launch(Dispatchers.IO) {
             val cached = FeedPoolCache.read(getApplication())
-            if (cached.isEmpty() || freshPublishSeen) return@launch
+            if (cached.isEmpty()) return@launch
             val painted = applyPaintFilters(cached)
-            if (painted.isEmpty() || freshPublishSeen) return@launch
-            FeedPool.entries = painted
-            cachePaintOnly = true
-            feed.postValue(Resource.Success(painted))
+            if (painted.isEmpty()) return@launch
+            // The fresh check, the pool assignment and the post
+            // happen under the same lock publish() uses, so a
+            // publish landing during the read/filter above is
+            // seen here and aborts the paint instead of posting
+            // stale entries after the fresh post.
+            paintPublishMutex.withLock {
+                if (freshPublishSeen) return@withLock
+                FeedPool.entries = painted
+                cachePaintOnly = true
+                feed.postValue(Resource.Success(painted))
+            }
         }
     }
 
@@ -318,17 +332,20 @@ class FeedViewModel(application: Application) : AndroidViewModel(application) {
         if (hidden.isNotEmpty()) {
             entries = entries.filterNot { it.response.url in hidden }
         }
-        FeedPool.entries = entries
-        freshPublishSeen = true
-        lastBuildWasPrepend = prepend
-        if (entries.isEmpty() && suppressEmpty) return
-        feed.postValue(
-            if (entries.isEmpty()) {
-                Resource.Failure(false, "No feed content")
-            } else {
-                Resource.Success(entries)
+        paintPublishMutex.withLock {
+            FeedPool.entries = entries
+            freshPublishSeen = true
+            lastBuildWasPrepend = prepend
+            if (!(entries.isEmpty() && suppressEmpty)) {
+                feed.postValue(
+                    if (entries.isEmpty()) {
+                        Resource.Failure(false, "No feed content")
+                    } else {
+                        Resource.Success(entries)
+                    }
+                )
             }
-        )
+        }
     }
 
     /**

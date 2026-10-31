@@ -498,6 +498,10 @@ class PlayerView @JvmOverloads constructor(
     fun exitFullscreen() {
         val activity = context as? Activity
         gestureHelper.resetZoomToDefault()
+        // Batch 2: hand the entry system brightness level +
+        // mode back (the window reset below covers only the
+        // window-fallback path).
+        gestureHelper.restoreEntrySystemBrightness()
         activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_USER
         // Simply resets brightness and notch settings that might have been overridden.
         val lp = activity?.window?.attributes
@@ -539,6 +543,7 @@ class PlayerView @JvmOverloads constructor(
 
         SubtitlesFragment.applyStyleEvent -= subStyleListener
 
+        gestureHelper.restoreEntrySystemBrightness()
         gestureHelper.release()
         autoHideHandler.removeCallbacksAndMessages(null)
 

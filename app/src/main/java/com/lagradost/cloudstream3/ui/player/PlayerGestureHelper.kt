@@ -248,6 +248,9 @@ class PlayerGestureHelper(private val playerView: PlayerView) {
 
     /** Called from [PlayerView.release]. */
     fun release() {
+        entrySystemBrightness = null
+        entryBrightnessMode = null
+        entryBrightnessSnapshotDone = false
         safe {
             brightnessOverlay?.let {
                 (it.parent as? ViewGroup)?.removeView(it)
@@ -437,6 +440,7 @@ class PlayerGestureHelper(private val playerView: PlayerView) {
     fun getBrightness(): Float? {
         return if (useTrueSystemBrightness) {
             try {
+                snapshotEntrySystemBrightness()
                 Settings.System.getInt(
                     (context as? Activity)?.contentResolver,
                     Settings.System.SCREEN_BRIGHTNESS
@@ -465,6 +469,7 @@ class PlayerGestureHelper(private val playerView: PlayerView) {
     fun setBrightness(brightness: Float) {
         if (useTrueSystemBrightness) {
             try {
+                snapshotEntrySystemBrightness()
                 Settings.System.putInt(
                     (context as? Activity)?.contentResolver,
                     Settings.System.SCREEN_BRIGHTNESS_MODE,
@@ -473,7 +478,7 @@ class PlayerGestureHelper(private val playerView: PlayerView) {
                 Settings.System.putInt(
                     (context as? Activity)?.contentResolver,
                     Settings.System.SCREEN_BRIGHTNESS,
-                    min(1, (brightness.coerceIn(0.0f, 1.0f) * 255).toInt())
+                    min(255, (brightness.coerceIn(0.0f, 1.0f) * 255).toInt())
                 )
             } catch (_: Exception) {
                 useTrueSystemBrightness = false
@@ -489,6 +494,58 @@ class PlayerGestureHelper(private val playerView: PlayerView) {
             } catch (e: Exception) {
                 logError(e)
             }
+        }
+    }
+
+    /** Batch 2: the system brightness level + mode in force when
+     *  this player first touched the system brightness, so
+     *  exit/release can hand both back (previously neither was
+     *  restored). Snapshotted lazily on the first system read
+     *  or write, before any write flips the mode to MANUAL.
+     *  Deliberately NOT cleared by restore: exitFullscreen
+     *  can run while the player lives on, and a later swipe
+     *  starts from the restored entry level, so restoring
+     *  again must still return the same entry values.
+     *  Cleared by release(), the terminal path. */
+    private var entrySystemBrightness: Int? = null
+    private var entryBrightnessMode: Int? = null
+    private var entryBrightnessSnapshotDone = false
+
+    private fun snapshotEntrySystemBrightness() {
+        if (entryBrightnessSnapshotDone) return
+        val resolver = (context as? Activity)?.contentResolver ?: return
+        try {
+            entryBrightnessMode = Settings.System.getInt(
+                resolver, Settings.System.SCREEN_BRIGHTNESS_MODE
+            )
+            entrySystemBrightness = Settings.System.getInt(
+                resolver, Settings.System.SCREEN_BRIGHTNESS
+            )
+            entryBrightnessSnapshotDone = true
+        } catch (_: Exception) {
+            // Permission missing: the caller's own read/write
+            // flips useTrueSystemBrightness off and retries on
+            // the window fallback, so leave the snapshot empty.
+        }
+    }
+
+    /** Hand the entry system level + mode back. No-op when no
+     *  snapshot exists (window-fallback mode, or the player
+     *  never touched brightness) or the system path is off. */
+    fun restoreEntrySystemBrightness() {
+        if (!useTrueSystemBrightness) return
+        val level = entrySystemBrightness ?: return
+        val mode = entryBrightnessMode ?: return
+        val resolver = (context as? Activity)?.contentResolver ?: return
+        try {
+            Settings.System.putInt(
+                resolver, Settings.System.SCREEN_BRIGHTNESS_MODE, mode
+            )
+            Settings.System.putInt(
+                resolver, Settings.System.SCREEN_BRIGHTNESS, level
+            )
+        } catch (_: Exception) {
+            useTrueSystemBrightness = false
         }
     }
 
@@ -1037,6 +1094,12 @@ class PlayerGestureHelper(private val playerView: PlayerView) {
             MotionEvent.ACTION_DOWN -> {
                 isCurrentTouchValid = isValidTouch(event.rawX, event.rawY)
                 if (isCurrentTouchValid) {
+                    // Batch 2: the tap gate on ACTION_UP also
+                    // requires currentLastTouchAction == null,
+                    // and ACTION_UP sets it to the swipe's
+                    // action — without clearing it here, the
+                    // first tap after any swipe is swallowed.
+                    currentLastTouchAction = null
                     playerView.callbacks?.onTouchDown()
                     hasTriggeredSpeedUp = false
                     if (speedupEnabled && playerView.player.getIsPlaying() && !isLocked) {
@@ -1071,7 +1134,7 @@ class PlayerGestureHelper(private val playerView: PlayerView) {
                                 TouchAction.Volume else TouchAction.Brightness
                         }
                     }
-                    if (swipeHorizontalEnabled && !isLocked) {
+                    if (swipeHorizontalEnabled && !isLocked && currentTouchAction == null) {
                         if (abs(diffFromStart.x * 100 / screenHeightWithOrientation) > MINIMUM_HORIZONTAL_SWIPE) {
                             holdHandler.removeCallbacks(holdRunnable)
                             currentTouchAction = TouchAction.Time

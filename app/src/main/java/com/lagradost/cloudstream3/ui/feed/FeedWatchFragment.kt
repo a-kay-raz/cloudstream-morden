@@ -106,10 +106,16 @@ class FeedWatchFragment : BaseFragment<FragmentFeedWatchBinding>(
     private var useFeedSystemBrightness = true
 
     /** Phase 8.99c (job B): the system level read when this
-     *  page was entered. A record only — the exit contract
-     *  mirrors the main player, whose release() never hands
-     *  the level back, so nothing is restored from it. */
+     *  page was entered. Batch 2: it IS restored now (level
+     *  + mode) by restoreSystemBrightness() on pause and on
+     *  destroy, and the gesture level is re-applied on resume
+     *  while this page is visible. */
     private var entrySystemBrightness: Float? = null
+
+    /** Batch 2: the entry level/mode as raw system ints (no
+     *  /255 rounding loss), restored on pause/destroy. */
+    private var entrySystemBrightnessRaw: Int? = null
+    private var entrySystemBrightnessMode: Int? = null
 
     private val handler = Handler(Looper.getMainLooper())
     private val progressRunnable = object : Runnable {
@@ -346,16 +352,23 @@ class FeedWatchFragment : BaseFragment<FragmentFeedWatchBinding>(
         // Phase 8.99c (job B): record the system brightness
         // this page was entered at (a plain read — reads need
         // no permission and must not flip the system-path
-        // flag). Record only: the exit contract mirrors the
-        // main player, which never hands the level back.
+        // flag). Batch 2 restores this entry level + mode on
+        // pause/destroy (see restoreSystemBrightness).
         if (entrySystemBrightness == null) {
-            entrySystemBrightness = try {
-                Settings.System.getInt(
+            try {
+                entrySystemBrightnessRaw = Settings.System.getInt(
                     requireContext().contentResolver,
                     Settings.System.SCREEN_BRIGHTNESS
-                ) / 255f
+                )
+                entrySystemBrightnessMode = Settings.System.getInt(
+                    requireContext().contentResolver,
+                    Settings.System.SCREEN_BRIGHTNESS_MODE
+                )
+                entrySystemBrightness = entrySystemBrightnessRaw!! / 255f
             } catch (_: Exception) {
-                null
+                entrySystemBrightness = null
+                entrySystemBrightnessRaw = null
+                entrySystemBrightnessMode = null
             }
         }
 
@@ -704,16 +717,19 @@ class FeedWatchFragment : BaseFragment<FragmentFeedWatchBinding>(
         activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         handler.post(progressRunnable)
         orientationListener?.enable()
-        // Phase 8.97: onPause handed the window brightness
-        // back (see below) — take the gesture's level again
-        // now that this screen is the resumed, visible one.
-        // Phase 8.99c: that round trip exists only in the
-        // window-FALLBACK mode. In system mode there is
-        // nothing to re-apply — the level the gesture set IS
-        // the system level and it never left (the main
-        // player's contract, mirrored).
+        // Phase 8.97: onPause handed the brightness back
+        // (see below) — take the gesture's level again now
+        // that this screen is the resumed, visible one.
+        // Batch 2: that round trip now covers system mode
+        // too (onPause restores the entry level + mode, and
+        // the else branch below re-applies the gesture level).
         if (!useFeedSystemBrightness) {
             savedFeedBrightness?.let { setWindowBrightness(it) }
+        } else {
+            // Batch 2: onPause handed the entry system level
+            // back — take the gesture's level again now that
+            // this screen is the resumed, visible one.
+            savedFeedBrightness?.let { setFeedBrightness(it) }
         }
         if (handedOff) {
             handedOff = false
@@ -738,13 +754,16 @@ class FeedWatchFragment : BaseFragment<FragmentFeedWatchBinding>(
         // itself is kept in savedFeedBrightness and onResume
         // re-applies it, so a pause/resume round trip is
         // invisible to the viewer.
-        // Phase 8.99c: this restore serves the window-FALLBACK
-        // mode only. In system mode no window override was
-        // ever set, so the call below is a no-op — and the
-        // system level is deliberately NOT handed back: the
-        // main player's release() never restores it either
-        // (screen-level means the level stays set).
+        // Batch 2: hand back BOTH the window override and
+        // the entry system level + mode, so a pause that
+        // leaves this fragment alive (a call, a system
+        // activity) no longer leaves the video's brightness
+        // sitting on the whole display. The gesture level is
+        // kept in savedFeedBrightness and onResume re-applies
+        // it, so a pause/resume round trip is invisible to
+        // the viewer.
         restoreWindowBrightness()
+        restoreSystemBrightness()
         super.onPause()
     }
 
@@ -777,10 +796,11 @@ class FeedWatchFragment : BaseFragment<FragmentFeedWatchBinding>(
         // Phase 8.97: onPause already restored it (the override
         // now lives only while this screen is resumed); this
         // stays as the final backstop for teardown paths.
-        // Phase 8.99c: window-FALLBACK backstop only — in
-        // system mode there is no override to hand back and
-        // the system level stays set by design (see onPause).
+        // Batch 2: final backstop for teardown paths — the
+        // entry system level + mode are handed back here too,
+        // not just the window override.
         restoreWindowBrightness()
+        restoreSystemBrightness()
         // After a handoff the main player owns the orientation; only
         // restore it when this page is really being left behind.
         if (!handedOff) {
@@ -1169,23 +1189,21 @@ class FeedWatchFragment : BaseFragment<FragmentFeedWatchBinding>(
     //    that throws (permission missing) retires the system
     //    path for this page instance and the window attribute
     //    takes over, with the helper's 0.004 floor;
-    //  - exit contract: the helper's release() never restores
-    //    the system level — what the gesture set STAYS set
-    //    (that is what screen-level means) and the next
-    //    touch-down re-reads the live level. Mirrored here:
-    //    no system restore on pause/destroy. The WINDOW
+    //  - exit contract (Batch 2): the entry system level +
+    //    mode ARE handed back on pause/destroy (see
+    //    restoreSystemBrightness) and the gesture level is
+    //    re-applied on resume, so the level stays set only
+    //    while this page is the visible one. The WINDOW
     //    fallback keeps the 8.97 discipline (override handed
     //    back in onPause/onDestroyView, re-applied in
     //    onResume) because that override lives on the app's
-    //    shared window; in system mode those calls are
-    //    no-ops.
-    //  One deliberate, flagged deviation: the helper's write
-    //  is literally min(1, fraction x 255) — capped at 1 of
-    //  255, which contradicts its own read (x / 255). The
-    //  feed writes the full 0..255 value the read side
-    //  expects; the path, the manual-mode handling, the
-    //  fallback order and the floors are otherwise the
-    //  helper's own.
+    //    shared window.
+    //  Batch 2 fixed the helper's write to the full 0..255
+    //  scale (it was min(1, fraction x 255), capped at 1 of
+    //  255, contradicting its own read of x / 255), so both
+    //  paths now write the value the read side expects; the
+    //  path, the manual-mode handling, the fallback order and
+    //  the floors are otherwise the helper's own.
 
     /** The gesture's starting brightness, mirroring
      *  PlayerGestureHelper.getBrightness: the SYSTEM level
@@ -1272,6 +1290,29 @@ class FeedWatchFragment : BaseFragment<FragmentFeedWatchBinding>(
                 lp.screenBrightness = none
                 win.attributes = lp
             }
+        }
+    }
+
+    /** Batch 2: hand the entry system level + mode back.
+     *  No-op in window-fallback mode (no system level was
+     *  ever written) or when no entry snapshot exists. The
+     *  snapshot is kept for the page's life: onPause restores
+     *  it, onResume re-applies the gesture level, and
+     *  onDestroyView restores it finally. */
+    private fun restoreSystemBrightness() {
+        if (!useFeedSystemBrightness) return
+        val level = entrySystemBrightnessRaw ?: return
+        val mode = entrySystemBrightnessMode ?: return
+        try {
+            val resolver = activity?.contentResolver ?: return
+            Settings.System.putInt(
+                resolver, Settings.System.SCREEN_BRIGHTNESS_MODE, mode
+            )
+            Settings.System.putInt(
+                resolver, Settings.System.SCREEN_BRIGHTNESS, level
+            )
+        } catch (_: Exception) {
+            useFeedSystemBrightness = false
         }
     }
 
