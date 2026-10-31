@@ -116,7 +116,40 @@ open class FullScreenPlayer : AbstractPlayerFragment<FragmentPlayerBinding>(
     private var isShowingEpisodeOverlay: Boolean = false
     private var previousPlayStatus: Boolean = false
 
-    override fun fixLayout(view: View) = Unit
+    override fun fixLayout(view: View) {
+        // Batch 4: was an explicit no-op, so no control was ever
+        // inset — with SHORT_EDGES cutout video the top title
+        // block (fixed 20dp top padding), back holder and bottom
+        // bar (10dp bottom margin only) could sit under a cutout
+        // or system bar when bars show transiently. Apply the
+        // system-bars/cutout insets to the controller holders
+        // themselves (not the fragment root, which would double
+        // -count them): top holder gets top/left/right, bottom
+        // bar gets bottom/left/right, episodes button gets right.
+        // playerBinding is set in onBindingCreated, which runs
+        // after the first fixLayout call, so this is re-applied
+        // there too; fixSystemBarsPadding replaces the listener,
+        // so repeated calls stay idempotent.
+        applyPlayerInsets()
+    }
+
+    private fun applyPlayerInsets() {
+        val binding = playerBinding ?: return
+        fixSystemBarsPadding(
+            binding.playerTopHolder,
+            padBottom = false
+        )
+        fixSystemBarsPadding(
+            binding.bottomPlayerBar,
+            padTop = false
+        )
+        fixSystemBarsPadding(
+            binding.playerEpisodesButtonRoot,
+            padTop = false,
+            padBottom = false,
+            padLeft = false
+        )
+    }
 
     /**
      * Wet code but this can not be made into a function as it is a setter.
@@ -261,12 +294,17 @@ open class FullScreenPlayer : AbstractPlayerFragment<FragmentPlayerBinding>(
             val sStyle = CustomDecoder.style
             val binding = playerBinding ?: return@post
 
-            val move = if (isShowing) minOf(
-                // We do not want to drag down subtitles if the subtitle elevation is large
-                -sStyle.elevation.toPx,
-                // The lib uses Invisible instead of Gone for no reason
-                binding.previewFrameLayout.height - binding.bottomPlayerBar.height
-            ) else -sStyle.elevation.toPx
+            // Batch 4: lift by the bottom bar's own height (which
+            // already includes its bottom system inset after the
+            // Batch 4 player insets) plus the subtitle elevation,
+            // when controls are showing. The old formula took
+            // minOf(-elevation, preview.height - bar.height), so
+            // the lift collapsed to ~elevation in landscape
+            // (preview ~112dp vs bar ~100-110dp) and subtitles
+            // sat behind the seekbar/controls.
+            val move = if (isShowing) {
+                -(binding.bottomPlayerBar.height + sStyle.elevation.toPx)
+            } else -sStyle.elevation.toPx
 
             sView.animateY(move.toFloat())
         }
@@ -1115,6 +1153,10 @@ open class FullScreenPlayer : AbstractPlayerFragment<FragmentPlayerBinding>(
         // (brightness overlay is now injected by PlayerView.initialize())
         playerBinding =
             PlayerCustomLayoutBinding.bind(binding.root.findViewById(R.id.player_holder))
+
+        // Batch 4: first fixLayout ran before playerBinding
+        // existed, so apply the player insets now.
+        applyPlayerInsets()
 
         super.onBindingCreated(binding, savedInstanceState)
 

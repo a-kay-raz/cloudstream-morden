@@ -14,12 +14,10 @@ import com.lagradost.cloudstream3.mvvm.Resource
 import com.lagradost.cloudstream3.ui.APIRepository
 import com.lagradost.cloudstream3.ui.BaseFragment
 import com.lagradost.cloudstream3.ui.search.TitleResolver
-import com.lagradost.cloudstream3.ui.settings.Globals.EMULATOR
-import com.lagradost.cloudstream3.ui.settings.Globals.TV
 import com.lagradost.cloudstream3.ui.settings.Globals.isLandscape
-import com.lagradost.cloudstream3.ui.settings.Globals.isLayout
 import com.lagradost.cloudstream3.utils.FamilyMode
 import com.lagradost.cloudstream3.utils.UIHelper.fixSystemBarsPadding
+import com.lagradost.cloudstream3.utils.UIHelper.getFeedSpanCount
 import com.lagradost.cloudstream3.utils.UIHelper.navigate
 import kotlinx.coroutines.launch
 
@@ -58,11 +56,18 @@ class FeedCategoryFragment : BaseFragment<FragmentFeedCategoryBinding>(
     private var items: List<FeedEntry> = emptyList()
 
     override fun fixLayout(view: View) {
+        // Batch 4: padLeft was TV/EMULATOR-only — see
+        // FeedSearchFragment for the landscape-cutout reason.
         fixSystemBarsPadding(
             view,
             padBottom = isLandscape(),
-            padLeft = isLayout(TV or EMULATOR)
+            padLeft = true
         )
+        (view.findViewById<androidx.recyclerview.widget.RecyclerView>(
+            R.id.feed_category_recycler
+        )?.layoutManager as? GridLayoutManager)?.let {
+            it.spanCount = view.context.getFeedSpanCount()
+        }
     }
 
     override fun onBindingCreated(binding: FragmentFeedCategoryBinding) {
@@ -72,7 +77,8 @@ class FeedCategoryFragment : BaseFragment<FragmentFeedCategoryBinding>(
         binding.feedCategoryBack.setOnClickListener {
             findNavController().popBackStack()
         }
-        binding.feedCategoryRecycler.layoutManager = GridLayoutManager(context, 3)
+        binding.feedCategoryRecycler.layoutManager =
+            GridLayoutManager(context, context?.getFeedSpanCount() ?: 3)
         binding.feedCategoryRecycler.adapter = adapter
         binding.feedCategoryRecycler.itemAnimator = null
 

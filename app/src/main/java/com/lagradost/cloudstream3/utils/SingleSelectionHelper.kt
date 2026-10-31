@@ -30,6 +30,7 @@ import com.lagradost.cloudstream3.ui.settings.Globals.PHONE
 import com.lagradost.cloudstream3.ui.settings.Globals.TV
 import com.lagradost.cloudstream3.ui.settings.Globals.isLayout
 import com.lagradost.cloudstream3.utils.ImageLoader.loadImage
+import com.lagradost.cloudstream3.utils.SheetChrome
 import com.lagradost.cloudstream3.utils.UIHelper.dismissSafe
 import com.lagradost.cloudstream3.utils.UIHelper.getResourceColor
 import com.lagradost.cloudstream3.utils.UIHelper.popupMenuNoIconsAndNoStringRes
@@ -420,6 +421,9 @@ object SingleSelectionHelper {
         callback: (String) -> Unit,
     ) {
         val builder = BottomSheetDialog(this)
+        // Batch 4: no soft-input handling before, so the
+        // Apply row could sit behind the keyboard.
+        SheetChrome.applyImeResize(builder)
 
         val binding: BottomInputDialogBinding = BottomInputDialogBinding.inflate(
             LayoutInflater.from(this)

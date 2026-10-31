@@ -1,11 +1,13 @@
 package com.lagradost.cloudstream3.utils
 
+import android.app.Dialog
 import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -39,8 +41,11 @@ object SheetChrome {
     const val HANDLE_TOP_DP = 8
     const val HANDLE_BOTTOM_DP = 14
     const val TITLE_SIZE_SP = 18f
-    const val CLOSE_BUTTON_DP = 36
-    const val CLOSE_BUTTON_PADDING_DP = 9
+    // Batch 4: 48dp touch target, visible icon kept at 18dp
+    // (was 36dp with 9dp padding) — same change as the XML
+    // sheet close buttons.
+    const val CLOSE_BUTTON_DP = 48
+    const val CLOSE_BUTTON_PADDING_DP = 15
     const val PRIMARY_BUTTON_HEIGHT_DP = 52
     const val PRIMARY_BUTTON_RADIUS_DP = 26
     const val ROW_BUTTON_RADIUS_DP = 20
@@ -172,5 +177,38 @@ object SheetChrome {
         dialog.findViewById<View>(
             com.google.android.material.R.id.design_bottom_sheet
         )?.setBackgroundColor(Color.TRANSPARENT)
+    }
+
+    /**
+     * Batch 4: cap a bottom sheet at 80% of screen height, the
+     * same clamp SingleSelectionHelper.applyResponsiveDialogSize
+     * applies to BottomSheetDialogs. Plugin settings sheets
+     * previously had no cap, so a tall form pushed Save/Cancel
+     * below the sheet edge.
+     */
+    fun capSheetHeight(dialog: BottomSheetDialog) {
+        val sheet = dialog.findViewById<View>(
+            com.google.android.material.R.id.design_bottom_sheet
+        ) ?: return
+        val maxHeight =
+            (dialog.context.resources.displayMetrics.heightPixels * 0.80f).toInt()
+        sheet.post {
+            if (sheet.height > maxHeight) {
+                sheet.layoutParams = sheet.layoutParams.apply {
+                    height = maxHeight
+                }
+            }
+        }
+    }
+
+    /**
+     * Batch 4: keep a sheet's button row above the keyboard.
+     * No dialog/sheet in scope previously set a soft-input mode
+     * or IME inset, so Apply/Save could sit behind the keyboard.
+     */
+    fun applyImeResize(dialog: Dialog) {
+        dialog.window?.setSoftInputMode(
+            WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+        )
     }
 }

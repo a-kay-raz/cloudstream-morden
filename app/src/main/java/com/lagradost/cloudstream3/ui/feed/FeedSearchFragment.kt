@@ -21,11 +21,9 @@ import com.lagradost.cloudstream3.databinding.FragmentFeedSearchBinding
 import com.lagradost.cloudstream3.ui.BaseFragment
 import com.lagradost.cloudstream3.ui.search.SearchResultBuilder.cleanPosterTitle
 import com.lagradost.cloudstream3.ui.search.TitleResolver
-import com.lagradost.cloudstream3.ui.settings.Globals.EMULATOR
-import com.lagradost.cloudstream3.ui.settings.Globals.TV
 import com.lagradost.cloudstream3.ui.settings.Globals.isLandscape
-import com.lagradost.cloudstream3.ui.settings.Globals.isLayout
 import com.lagradost.cloudstream3.utils.UIHelper.fixSystemBarsPadding
+import com.lagradost.cloudstream3.utils.UIHelper.getFeedSpanCount
 import com.lagradost.cloudstream3.utils.UIHelper.hideKeyboard
 import com.lagradost.cloudstream3.utils.UIHelper.navigate
 import kotlinx.coroutines.Job
@@ -103,15 +101,27 @@ class FeedSearchFragment : BaseFragment<FragmentFeedSearchBinding>(
     }
 
     override fun fixLayout(view: View) {
+        // Batch 4: padLeft was TV/EMULATOR-only, so in landscape
+        // on a phone (side rail hidden for this destination) a
+        // left camera cutout had no inset for the 42dp back
+        // button at marginStart 12dp. Always inset left now;
+        // portrait phones report a 0 left inset, so no change.
         fixSystemBarsPadding(
             view,
             padBottom = isLandscape(),
-            padLeft = isLayout(TV or EMULATOR)
+            padLeft = true
         )
+        (view.findViewById<androidx.recyclerview.widget.RecyclerView>(
+            R.id.feed_search_recycler
+        )?.layoutManager as? GridLayoutManager)?.let {
+            it.spanCount = view.context.getFeedSpanCount()
+        }
     }
 
     override fun onBindingCreated(binding: FragmentFeedSearchBinding) {
-        binding.feedSearchRecycler.layoutManager = GridLayoutManager(context, 3)
+        // Batch 4: width-aware span like Search, not hardcoded 3.
+        binding.feedSearchRecycler.layoutManager =
+            GridLayoutManager(context, context?.getFeedSpanCount() ?: 3)
         binding.feedSearchRecycler.adapter = adapter
         binding.feedSearchRecycler.itemAnimator = null
 

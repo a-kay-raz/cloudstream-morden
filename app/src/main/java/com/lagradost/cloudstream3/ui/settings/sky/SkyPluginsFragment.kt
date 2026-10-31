@@ -646,6 +646,13 @@ class SkyPluginsFragment : Fragment() {
         // title row with the circular close button; the form column
         // keeps carrying the 20dp side padding.
         val scroll = ScrollView(ctx).apply { addView(column) }
+        // Batch 4: weight 1 so the form scrolls and the
+        // button row below it stays on-screen, instead of an
+        // unweighted ScrollView measuring to full content
+        // height and pushing Save/Cancel below the sheet edge.
+        scroll.layoutParams = LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f
+        )
         val (skyTitleRow, skyCloseButton) = SheetChrome.titleRow(
             ctx, plugin.manifest()?.name ?: plugin.name
         ).apply {
@@ -704,6 +711,10 @@ class SkyPluginsFragment : Fragment() {
             dialog.dismiss()
         }
         dialog.show()
+        // Batch 4: cap the sheet at 80% of screen height
+        // and keep Save/Cancel above the keyboard.
+        SheetChrome.applyImeResize(dialog)
+        SheetChrome.capSheetHeight(dialog)
         // The dialog's own sheet frame stays transparent — the
         // sheet root's rounded_dialog background is the only surface.
         SheetChrome.transparentSheetFrame(dialog)

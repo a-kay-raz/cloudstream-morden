@@ -39,7 +39,10 @@ import com.lagradost.cloudstream3.ui.settings.Globals.EMULATOR
 import com.lagradost.cloudstream3.ui.settings.Globals.TV
 import com.lagradost.cloudstream3.ui.settings.Globals.isLandscape
 import com.lagradost.cloudstream3.ui.settings.Globals.isLayout
+import com.lagradost.cloudstream3.utils.UIHelper.applyFloatingNavBottomMargin
+import com.lagradost.cloudstream3.utils.UIHelper.applyFloatingNavBottomPadding
 import com.lagradost.cloudstream3.utils.UIHelper.fixSystemBarsPadding
+import com.lagradost.cloudstream3.utils.UIHelper.getFeedSpanCount
 import com.lagradost.cloudstream3.utils.UIHelper.navigate
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -317,6 +320,12 @@ class FeedFragment : BaseFragment<FragmentFeedBinding>(
             padBottom = isLandscape(),
             padLeft = isLayout(TV or EMULATOR)
         )
+        // Batch 4: rotation without view recreation must re-span
+        // the grid (the lookup below reads spanCount live).
+        (view.findViewById<RecyclerView>(R.id.feed_recycler)
+            ?.layoutManager as? GridLayoutManager)?.let {
+            it.spanCount = view.context.getFeedSpanCount()
+        }
     }
 
     override fun onBindingCreated(binding: FragmentFeedBinding) {
@@ -328,7 +337,10 @@ class FeedFragment : BaseFragment<FragmentFeedBinding>(
         // Phase 8.85: 3 columns like Home's grid (was 2).
         // Phase 8.92: the ConcatAdapter is category rows + cards
         // — the hero header item is gone with the hero itself.
-        val gridLayoutManager = GridLayoutManager(context, 3)
+        // Batch 4: width-aware like Search — 2 below ~360dp,
+        // 6 in landscape — instead of a hardcoded 3.
+        val gridLayoutManager =
+            GridLayoutManager(context, context?.getFeedSpanCount() ?: 3)
         gridLayoutManager.spanSizeLookup =
             object : GridLayoutManager.SpanSizeLookup() {
                 // Category rows, their skeleton placeholders
@@ -339,10 +351,15 @@ class FeedFragment : BaseFragment<FragmentFeedBinding>(
                     val headers = categoryRowsAdapter.itemCount +
                         chromeSkeletonAdapter.itemCount +
                         forYouHeaderAdapter.itemCount
-                    return if (position < headers) 3 else 1
+                    return if (position < headers) gridLayoutManager.spanCount else 1
                 }
             }
         binding.feedRecycler.layoutManager = gridLayoutManager
+        // Batch 4: runtime floating-pill clearance (88dp +
+        // systemBars bottom) replaces the hardcoded 76dp XML
+        // padding, which was short by the system inset.
+        binding.feedRecycler.applyFloatingNavBottomPadding()
+        binding.feedMini.feedMiniRoot.applyFloatingNavBottomMargin()
         binding.feedRecycler.adapter = ConcatAdapter(
             categoryRowsAdapter, chromeSkeletonAdapter,
             forYouHeaderAdapter, adapter

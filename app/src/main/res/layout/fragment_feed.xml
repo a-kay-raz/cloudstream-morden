@@ -34,7 +34,9 @@
                  bar's footprint — 14dp lift + 62dp pill = the pill's
                  top edge 76dp above the screen bottom (API 27; the
                  80dp from the flat-bar era left a dead black band
-                 under the last row). -->
+                 under the last row). Batch 4: the 76dp XML value
+                 is only the fallback — FeedFragment now sets it
+                 at runtime (76dp + systemBars bottom + 12dp gap). -->
             <androidx.recyclerview.widget.RecyclerView
                 android:id="@+id/feed_recycler"
                 android:layout_width="match_parent"
@@ -102,21 +104,21 @@
                             layout="@layout/feed_skeleton_item"
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
-                            android:layout_margin="6dp"
+                            android:layout_margin="4dp"
                             android:layout_weight="1" />
 
                         <include
                             layout="@layout/feed_skeleton_item"
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
-                            android:layout_margin="6dp"
+                            android:layout_margin="4dp"
                             android:layout_weight="1" />
 
                         <include
                             layout="@layout/feed_skeleton_item"
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
-                            android:layout_margin="6dp"
+                            android:layout_margin="4dp"
                             android:layout_weight="1" />
 
                     </LinearLayout>
@@ -130,21 +132,21 @@
                             layout="@layout/feed_skeleton_item"
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
-                            android:layout_margin="6dp"
+                            android:layout_margin="4dp"
                             android:layout_weight="1" />
 
                         <include
                             layout="@layout/feed_skeleton_item"
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
-                            android:layout_margin="6dp"
+                            android:layout_margin="4dp"
                             android:layout_weight="1" />
 
                         <include
                             layout="@layout/feed_skeleton_item"
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
-                            android:layout_margin="6dp"
+                            android:layout_margin="4dp"
                             android:layout_weight="1" />
 
                     </LinearLayout>

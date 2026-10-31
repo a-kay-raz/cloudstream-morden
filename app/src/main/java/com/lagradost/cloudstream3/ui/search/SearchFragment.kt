@@ -86,6 +86,7 @@ import com.lagradost.cloudstream3.utils.DataStoreHelper.currentAccount
 import com.lagradost.cloudstream3.utils.SubtitleHelper
 import com.lagradost.cloudstream3.utils.BackPressedCallbackHelper.attachBackPressedCallback
 import com.lagradost.cloudstream3.utils.BackPressedCallbackHelper.detachBackPressedCallback
+import com.lagradost.cloudstream3.utils.UIHelper.applyFloatingNavBottomPadding
 import com.lagradost.cloudstream3.utils.UIHelper.dismissSafe
 import com.lagradost.cloudstream3.utils.UIHelper.fixSystemBarsPadding
 import com.lagradost.cloudstream3.utils.UIHelper.toPx
@@ -634,6 +635,16 @@ class SearchFragment : BaseFragment<FragmentSearchBinding>(
                 "tv_no_focus_tag"
             searchAutofitResults.setRecycledViewPool(SearchAdapter.sharedPool)
             searchAutofitResults.adapter = adapter
+            // Batch 4: runtime floating-pill clearance (88dp +
+            // systemBars bottom) on all three lists plus the
+            // suggestions overlay, kept in sync — replacing the
+            // hardcoded 92dp values, which were short by the
+            // system inset; the overlay previously had no
+            // bottom padding at all and grew under the pill.
+            searchAutofitResults.applyFloatingNavBottomPadding()
+            searchMasterRecycler.applyFloatingNavBottomPadding()
+            searchHistoryRecycler.applyFloatingNavBottomPadding()
+            searchSuggestionsRecycler.applyFloatingNavBottomPadding()
             searchLoadingBar.alpha = 0f
         }
 

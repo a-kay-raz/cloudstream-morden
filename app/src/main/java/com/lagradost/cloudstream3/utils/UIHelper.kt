@@ -223,6 +223,88 @@ object UIHelper {
         } else spanCountPortrait
     }
 
+    /**
+     * Batch 4: width-aware span count for the Feed grids (Feed,
+     * FeedSearch, FeedCategory). Search already used [getSpanCount]
+     * (3 portrait / 6 landscape); the Feed grids were a hardcoded 3
+     * everywhere, so a ~320dp phone got ~95dp columns and landscape
+     * stayed 3-across while Search went to 6. Below ~360dp wide the
+     * grid drops to 2 columns; landscape goes to 6 like Search.
+     */
+    fun Context.getFeedSpanCount(): Int {
+        val config = resources.configuration
+        if (config.orientation == Configuration.ORIENTATION_LANDSCAPE) return 6
+        return if (config.screenWidthDp in 1..<360) 2 else 3
+    }
+
+    /**
+     * Batch 4: the floating pill's footprint, as a runtime value.
+     * The pill is 50dp tall + 6dp top/bottom padding = 62dp, lifted
+     * 14dp above the screen edge, plus the system-bars bottom inset
+     * on API 30+ (FloatingNavView grows its own bottom padding by
+     * that inset) — so the pill top sits 76dp + systemBottom above
+     * the screen bottom. Content clearing it needs 76dp +
+     * systemBottom + a 12dp gap = 88dp + systemBottom. The old XML
+     * values (76dp Feed, 92dp Home/Search) were hardcoded and short
+     * by systemBottom (~16dp gesture nav, ~48dp 3-button nav).
+     * Portrait only: in landscape the floating pill is hidden
+     * (MainActivity shows the side rail instead), so the XML
+     * padding is left untouched there. Insets are NOT consumed,
+     * so a fragment root's own inset listener still runs.
+     */
+    private const val FLOATING_NAV_PILL_DP = 76f
+    private const val FLOATING_NAV_GAP_DP = 12f
+
+    fun View.applyFloatingNavBottomPadding() {
+        val ctx = context ?: return
+        if (ctx.resources.configuration.orientation ==
+            Configuration.ORIENTATION_LANDSCAPE
+        ) return
+        val density = ctx.resources.displayMetrics.density
+        val basePx =
+            ((FLOATING_NAV_PILL_DP + FLOATING_NAV_GAP_DP) * density).toInt()
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            updatePadding(bottom = basePx + ctx.getNavigationBarHeight())
+            return
+        }
+        ViewCompat.setOnApplyWindowInsetsListener(this) { view, insets ->
+            val systemBottom =
+                insets.getInsets(WindowInsetsCompat.Type.systemBars()).bottom
+            view.updatePadding(bottom = basePx + systemBottom)
+            insets
+        }
+        ViewCompat.requestApplyInsets(this)
+    }
+
+    /** Same runtime footprint as [applyFloatingNavBottomPadding],
+     *  as a bottom margin — for views floating above the pill
+     *  (Feed mini player, Home Random FAB). */
+    fun View.applyFloatingNavBottomMargin() {
+        val ctx = context ?: return
+        if (ctx.resources.configuration.orientation ==
+            Configuration.ORIENTATION_LANDSCAPE
+        ) return
+        val density = ctx.resources.displayMetrics.density
+        val basePx =
+            ((FLOATING_NAV_PILL_DP + FLOATING_NAV_GAP_DP) * density).toInt()
+        fun setMargin(extra: Int) {
+            val params = layoutParams as? MarginLayoutParams ?: return
+            params.bottomMargin = basePx + extra
+            layoutParams = params
+        }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            setMargin(ctx.getNavigationBarHeight())
+            return
+        }
+        ViewCompat.setOnApplyWindowInsetsListener(this) { _, insets ->
+            val systemBottom =
+                insets.getInsets(WindowInsetsCompat.Type.systemBars()).bottom
+            setMargin(systemBottom)
+            insets
+        }
+        ViewCompat.requestApplyInsets(this)
+    }
+
     fun Fragment.hideKeyboard() {
         activity?.window?.decorView?.clearFocus()
         view?.let {

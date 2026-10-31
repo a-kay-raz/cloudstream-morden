@@ -5,7 +5,11 @@
      Phase 8.94: bottom margin 100dp -> 82dp, tracking the flat nav
      bar (zone 88dp -> 70dp); the 12dp gap above the bar is kept.
      Phase 8.95: phone bar is 80dp (zone 70dp -> 80dp) — margin
-     82dp -> 92dp, the 12dp gap is kept. -->
+     82dp -> 92dp, the 12dp gap is kept.
+     Batch 4: the 92dp XML value is only the fallback —
+     FeedFragment now sets the margin at runtime (76dp pill
+     footprint + systemBars bottom + 12dp gap) so 3-button
+     nav no longer overlaps the pill. -->
 <androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/feed_mini_root"

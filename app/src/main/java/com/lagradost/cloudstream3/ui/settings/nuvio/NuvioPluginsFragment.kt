@@ -578,6 +578,12 @@ class NuvioPluginsFragment : Fragment() {
         // column drops its own (it was sized for the dialog).
         column.setPadding(0, dp(4), 0, 0)
         val scroll = ScrollView(ctx).apply { addView(column) }
+        // Batch 4: weight 1 so the form scrolls and the
+        // button row below it stays on-screen (see the Sky
+        // sheet for the unweighted-ScrollView failure mode).
+        scroll.layoutParams = LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f
+        )
         val root = SheetChrome.sheetRoot(ctx)
         root.addView(SheetChrome.dragHandle(ctx))
         val (titleRow, closeButton) = SheetChrome.titleRow(ctx, scraper.name)
@@ -623,6 +629,10 @@ class NuvioPluginsFragment : Fragment() {
             dialog.dismiss()
         }
         dialog.show()
+        // Batch 4: cap the sheet at 80% of screen height
+        // and keep Save/Cancel above the keyboard.
+        SheetChrome.applyImeResize(dialog)
+        SheetChrome.capSheetHeight(dialog)
         SheetChrome.transparentSheetFrame(dialog)
     }
 }

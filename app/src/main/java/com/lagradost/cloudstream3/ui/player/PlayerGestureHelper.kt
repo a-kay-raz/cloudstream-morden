@@ -41,6 +41,7 @@ import com.lagradost.cloudstream3.ui.settings.Globals.EMULATOR
 import com.lagradost.cloudstream3.ui.settings.Globals.PHONE
 import com.lagradost.cloudstream3.ui.settings.Globals.isLayout
 import com.lagradost.cloudstream3.utils.DataStoreHelper
+import com.lagradost.cloudstream3.utils.UIHelper.getNavigationBarHeight
 import com.lagradost.cloudstream3.utils.UIHelper.getStatusBarHeight
 import com.lagradost.cloudstream3.utils.Vector2
 import kotlin.math.abs
@@ -1054,14 +1055,35 @@ class PlayerGestureHelper(private val playerView: PlayerView) {
     private fun isValidTouch(rawX: Float, rawY: Float): Boolean {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             val holder = playerView.playerHolder ?: return true
-            val insets = holder.rootWindowInsets.getInsetsIgnoringVisibility(WindowInsets.Type.systemBars())
+            // Batch 4: getInsetsIgnoringVisibility kept a
+            // permanent top/bottom/left/right dead strip even
+            // when the bars were hidden - including the bottom
+            // strip where the seekbar/controls live, so taps
+            // could not toggle controls and swipes could not
+            // start. Visible insets only: when bars are hidden
+            // the gate opens back up.
+            val insets = holder.rootWindowInsets
+                ?.getInsets(WindowInsets.Type.systemBars())
+                ?: return true
             val validHeight = rawY > insets.top && rawY < screenHeightWithOrientation - insets.bottom
             val validWidth = rawX > insets.left && rawX < screenWidthWithOrientation - insets.right
             return validHeight && validWidth
         }
 
-        return rawY > context.getStatusBarHeight() && rawX < screenWidthWithOrientation
+        // Batch 4 (pre-R): the old fallback only checked the
+        // status-bar top and the right edge, so bottom-edge
+        // (gesture-nav) touches fought system nav. Check the
+        // navigation-bar height at the bottom and any display
+        // cutout at the left, where the platform reports one.
+        val holder = playerView.playerHolder
+        val cutoutLeft =
+            holder?.rootWindowInsets?.displayCutout?.safeInsetLeft ?: 0
+        return rawY > context.getStatusBarHeight() &&
+            rawY < screenHeightWithOrientation - context.getNavigationBarHeight() &&
+            rawX > cutoutLeft &&
+            rawX < screenWidthWithOrientation
     }
+
 
     private fun handleGesture(view: View, event: MotionEvent): Boolean {
         val currentTouch = Vector2(event.x, event.y)

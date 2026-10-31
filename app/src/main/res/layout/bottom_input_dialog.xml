@@ -42,11 +42,11 @@
 
         <ImageButton
             android:id="@+id/close_btt"
-            android:layout_width="36dp"
-            android:layout_height="36dp"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
             android:background="@drawable/bg_feed_circle_button"
             android:contentDescription="@string/switcher_close"
-            android:padding="9dp"
+            android:padding="15dp"
             android:src="@drawable/ic_baseline_close_24"
             app:tint="?attr/textColor" />
     </LinearLayout>

@@ -101,6 +101,8 @@ import com.lagradost.cloudstream3.utils.FamilyMode
 import com.lagradost.cloudstream3.utils.EmptyEvent
 import com.lagradost.cloudstream3.utils.SubtitleHelper.getFlagFromIso
 import com.lagradost.cloudstream3.utils.TvChannelUtils
+import com.lagradost.cloudstream3.utils.UIHelper.applyFloatingNavBottomMargin
+import com.lagradost.cloudstream3.utils.UIHelper.applyFloatingNavBottomPadding
 import com.lagradost.cloudstream3.utils.UIHelper.dismissSafe
 import com.lagradost.cloudstream3.utils.UIHelper.fixSystemBarsPadding
 import com.lagradost.cloudstream3.utils.UIHelper.getResourceColor
@@ -1485,6 +1487,14 @@ class HomeFragment : BaseFragment<FragmentHomeBinding>(
             )
             homeMasterRecycler.setRecycledViewPool(ParentItemAdapter.sharedPool)
             homeMasterRecycler.adapter = homeMasterAdapter
+            // Batch 4: runtime floating-pill clearance (88dp +
+            // systemBars bottom) replaces the hardcoded 92dp XML
+            // padding, which was short by the system inset.
+            homeMasterRecycler.applyFloatingNavBottomPadding()
+            // Batch 4: same runtime formula for the Random FAB
+            // (was a fixed 104dp margin: 12dp gap on gesture nav,
+            // 20dp overlap on 3-button nav).
+            homeRandom.applyFloatingNavBottomMargin()
             // Phase 8.56: no item animator on the master list —
             // change animations on rebinds (title/rating refresh,
             // rotation) are a visible shudder (কাপাকাপি) source.

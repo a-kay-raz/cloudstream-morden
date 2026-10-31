@@ -122,7 +122,7 @@
 
             <View
                 android:layout_width="300dp"
-                android:layout_height="560dp"
+                android:layout_height="match_parent"
                 android:layout_gravity="center_vertical|start"
                 android:layout_marginStart="-150dp"
                 android:background="@drawable/seek_wedge_bg" />
@@ -161,7 +161,7 @@
 
             <View
                 android:layout_width="300dp"
-                android:layout_height="560dp"
+                android:layout_height="match_parent"
                 android:layout_gravity="center_vertical|end"
                 android:layout_marginEnd="-150dp"
                 android:background="@drawable/seek_wedge_bg" />
@@ -202,12 +202,15 @@
                 android:layout_height="wrap_content"
                 android:layout_gravity="top|end"
                 android:orientation="horizontal"
-                android:padding="4dp">
+                android:paddingStart="4dp"
+                android:paddingTop="12dp"
+                android:paddingEnd="12dp"
+                android:paddingBottom="4dp">
 
                 <androidx.mediarouter.app.MediaRouteButton
                     android:id="@+id/feed_watch_cast"
-                    android:layout_width="36dp"
-                    android:layout_height="36dp"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
                     android:background="@drawable/feed_center_button_bg"
                     android:mediaRouteTypes="user"
                     android:visibility="gone"
@@ -215,22 +218,22 @@
 
                 <ImageButton
                     android:id="@+id/feed_watch_audio"
-                    android:layout_width="36dp"
-                    android:layout_height="36dp"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
                     android:layout_marginStart="8dp"
                     android:background="@drawable/feed_center_button_bg"
                     android:contentDescription="@string/feed_audio"
-                    android:padding="10dp"
+                    android:padding="12dp"
                     android:src="@drawable/feed_audio" />
 
                 <ImageButton
                     android:id="@+id/feed_watch_subtitles"
-                    android:layout_width="36dp"
-                    android:layout_height="36dp"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
                     android:layout_marginStart="8dp"
                     android:background="@drawable/feed_center_button_bg"
                     android:contentDescription="@string/feed_subtitles"
-                    android:padding="10dp"
+                    android:padding="12dp"
                     android:src="@drawable/ic_baseline_subtitles_24" />
             </LinearLayout>
 

@@ -39,10 +39,6 @@ import com.lagradost.cloudstream3.ui.player.RepoLinkGenerator
 import com.lagradost.cloudstream3.ui.search.SearchResultBuilder.cleanPosterTitle
 import com.lagradost.cloudstream3.ui.search.TitleResolver
 import com.lagradost.cloudstream3.ui.search.goldStarText
-import com.lagradost.cloudstream3.ui.settings.Globals.EMULATOR
-import com.lagradost.cloudstream3.ui.settings.Globals.TV
-import com.lagradost.cloudstream3.ui.settings.Globals.isLandscape
-import com.lagradost.cloudstream3.ui.settings.Globals.isLayout
 import com.lagradost.cloudstream3.mvvm.logError
 import com.google.android.gms.cast.framework.CastButtonFactory
 import com.google.android.gms.cast.framework.CastContext
@@ -334,10 +330,18 @@ class FeedWatchFragment : BaseFragment<FragmentFeedWatchBinding>(
     }
 
     override fun fixLayout(view: View) {
+        // Batch 4: padLeft was TV/EMULATOR-only and padBottom
+        // was landscape-only, with no reason found in code for
+        // dropping either on a phone — in landscape a left
+        // camera cutout sat over the title box/controls, and in
+        // portrait the watch root never got a bottom inset.
+        // Both are applied now (portrait phones report a 0
+        // left inset, so the left change is landscape-only in
+        // practice).
         fixSystemBarsPadding(
             view,
-            padBottom = isLandscape(),
-            padLeft = isLayout(TV or EMULATOR)
+            padBottom = true,
+            padLeft = true
         )
     }
 

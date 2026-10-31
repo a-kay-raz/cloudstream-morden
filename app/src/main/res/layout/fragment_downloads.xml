@@ -322,12 +322,17 @@
              drops 200dp -> 182dp; rest clearance is unchanged.
              Phase 8.95: phone bar is 80dp (zone 70dp -> 80dp) — the
              queue bar's margin rises 82dp -> 92dp and this padding
-             rises 182dp -> 192dp; rest clearance is unchanged. -->
+             rises 182dp -> 192dp; rest clearance is unchanged.
+             Batch 4: 192dp was 50dp more than the bar stack needs
+             (queue bar 50dp tall at marginBottom 92dp => its top
+             edge is 142dp above the screen bottom; no FAB or
+             other overlay was found above it) — dropped to
+             142dp + 12dp gap = 154dp. -->
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/download_list"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:paddingBottom="192dp"
+            android:paddingBottom="154dp"
             android:clipToPadding="false"
             android:descendantFocusability="afterDescendants"
             android:nextFocusUp="@id/download_stream_button_tv"
