@@ -45,6 +45,7 @@ import com.lagradost.cloudstream3.utils.BackPressedCallbackHelper.attachBackPres
 import com.lagradost.cloudstream3.utils.BackPressedCallbackHelper.detachBackPressedCallback
 import com.lagradost.cloudstream3.utils.DOWNLOAD_EPISODE_CACHE
 import com.lagradost.cloudstream3.utils.DataStore.getFolderName
+import com.lagradost.cloudstream3.utils.SheetChrome
 import com.lagradost.cloudstream3.utils.UIHelper.dismissSafe
 import com.lagradost.cloudstream3.utils.UIHelper.fixSystemBarsPadding
 import com.lagradost.cloudstream3.utils.UIHelper.refreshFloatingNavBottomMargin
@@ -326,6 +327,9 @@ class DownloadFragment : BaseFragment<FragmentDownloadsBinding>(
         val binding = StreamInputBinding.inflate(dialog.layoutInflater)
         dialog.setContentView(binding.root)
         dialog.show()
+        // Re-audit: two EditTexts plus a bottom Apply row, no
+        // soft-input handling — the keyboard could cover Apply.
+        SheetChrome.applyImeResize(dialog)
 
         var preventAutoSwitching = false
         binding.hlsSwitch.setOnClickListener { preventAutoSwitching = true }

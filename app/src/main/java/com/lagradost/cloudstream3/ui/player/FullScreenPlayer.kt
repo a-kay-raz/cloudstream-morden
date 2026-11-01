@@ -568,9 +568,9 @@ open class FullScreenPlayer : AbstractPlayerFragment<FragmentPlayerBinding>(
         dialog.applyPlayerOverlaySize()
         dialog.show()
 
-        val isPortrait =
-            ctx.resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
-        fixSystemBarsPadding(binding.root, fixIme = isPortrait)
+        // Re-audit: IME handling was portrait-only, so the
+        // normal landscape player got none for this dialog.
+        fixSystemBarsPadding(binding.root, fixIme = true)
 
         var currentOffset = subtitleDelay
         binding.apply {

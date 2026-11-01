@@ -27,7 +27,10 @@ class SourcePriorityDialog(
         val binding =
             PlayerSelectSourcePriorityBinding.inflate(LayoutInflater.from(ctx), null, false)
         setContentView(binding.root)
-        fixSystemBarsPadding(binding.root)
+        // Re-audit: the profile-name EditText sits inside the
+        // bottom 60dp holder — the field being typed in was
+        // the one the keyboard covered.
+        fixSystemBarsPadding(binding.root, fixIme = true)
 
         binding.apply {
             profileTextEditable.setText(

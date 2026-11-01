@@ -44,6 +44,7 @@ import com.lagradost.cloudstream3.utils.AppContextUtils.setDefaultFocus
 import com.lagradost.cloudstream3.utils.DataStoreHelper
 import com.lagradost.cloudstream3.utils.DataStoreHelper.getDefaultAccount
 import com.lagradost.cloudstream3.utils.ImageLoader.loadImage
+import com.lagradost.cloudstream3.utils.SheetChrome
 import com.lagradost.cloudstream3.utils.UIHelper.dismissSafe
 import com.lagradost.cloudstream3.utils.UIHelper.hideProgress
 import com.lagradost.cloudstream3.utils.UIHelper.toPx
@@ -180,6 +181,12 @@ object AccountHelper {
             val sheetBinding = BottomInputDialogBinding.inflate(LayoutInflater.from(context))
             bottomSheetDialog.setContentView(sheetBinding.root)
             bottomSheetDialog.show()
+            // Re-audit: this sheet reuses bottom_input_dialog.xml
+            // (same EditText + bottom Apply/Cancel holder as the
+            // nginx sheet) but, unlike it, had no IME handling,
+            // so the keyboard could cover Apply/Cancel.
+            SheetChrome.applyImeResize(bottomSheetDialog)
+            SheetChrome.capSheetHeight(bottomSheetDialog)
             // Phase 8.89: standard sheet close button.
             sheetBinding.closeBtt.setOnClickListener {
                 bottomSheetDialog.dismissSafe()

@@ -651,7 +651,11 @@ class GeneratorPlayer : FullScreenPlayer() {
         val binding =
             DialogOnlineSubtitlesBinding.inflate(LayoutInflater.from(context), null, false)
         dialog.setContentView(binding.root)
-        fixSystemBarsPadding(binding.root)
+        // Re-audit: this dialog has a SearchView on top and a
+        // 60dp Apply/Cancel holder at the bottom; without an
+        // IME inset the keyboard covered both list bottom and
+        // Apply/Cancel in both orientations.
+        fixSystemBarsPadding(binding.root, fixIme = true)
 
         var currentSubtitles: List<AbstractSubtitleEntities.SubtitleEntity> = emptyList()
         var currentSubtitle: AbstractSubtitleEntities.SubtitleEntity? = null
