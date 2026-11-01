@@ -52,7 +52,7 @@ import com.lagradost.cloudstream3.utils.AppContextUtils.reduceDragSensitivity
 import com.lagradost.cloudstream3.utils.DataStoreHelper.currentAccount
 import com.lagradost.cloudstream3.utils.SingleSelectionHelper.showBottomDialog
 import com.lagradost.cloudstream3.utils.UIHelper.fixSystemBarsPadding
-import com.lagradost.cloudstream3.utils.UIHelper.getSpanCount
+import com.lagradost.cloudstream3.utils.UIHelper.getFeedSpanCount
 import com.lagradost.cloudstream3.utils.UIHelper.refreshFloatingNavBottomMargin
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -333,7 +333,7 @@ class LibraryFragment : BaseFragment<FragmentLibraryBinding>(
 
         val startLoading = Runnable {
             binding.apply {
-                gridview.numColumns = root.context.getSpanCount()
+                gridview.numColumns = root.context.getFeedSpanCount()
                 gridview.adapter =
                     context?.let { LoadingPosterAdapter(it, 6 * 3) }
                 libraryLoadingOverlay.isVisible = true

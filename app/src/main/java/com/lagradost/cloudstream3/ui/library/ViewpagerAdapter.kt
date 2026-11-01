@@ -20,7 +20,7 @@ import com.lagradost.cloudstream3.ui.search.SearchClickCallback
 import com.lagradost.cloudstream3.ui.settings.Globals.EMULATOR
 import com.lagradost.cloudstream3.ui.settings.Globals.TV
 import com.lagradost.cloudstream3.ui.settings.Globals.isLayout
-import com.lagradost.cloudstream3.utils.UIHelper.getSpanCount
+import com.lagradost.cloudstream3.utils.UIHelper.getFeedSpanCount
 
 class ViewpagerAdapterViewHolderState(val binding: LibraryViewpagerPageBinding) :
     ViewHolderState<Bundle>(binding) {
@@ -76,7 +76,7 @@ class ViewpagerAdapter(
 
         binding.pageRecyclerview.tag = position
         binding.pageRecyclerview.apply {
-            spanCount = binding.root.context.getSpanCount()
+            spanCount = binding.root.context.getFeedSpanCount()
             if (adapter == null) { //  || rebind
                 // Only add the items after it has been attached since the items rely on ItemWidth
                 // Which is only determined after the recyclerview is attached.

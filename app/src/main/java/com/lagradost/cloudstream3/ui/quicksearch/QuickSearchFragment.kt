@@ -43,7 +43,7 @@ import com.lagradost.cloudstream3.utils.AppContextUtils.isRecyclerScrollable
 import com.lagradost.cloudstream3.utils.AppContextUtils.ownShow
 import com.lagradost.cloudstream3.utils.Coroutines.ioSafe
 import com.lagradost.cloudstream3.utils.UIHelper.fixSystemBarsPadding
-import com.lagradost.cloudstream3.utils.UIHelper.getSpanCount
+import com.lagradost.cloudstream3.utils.UIHelper.getFeedSpanCount
 import com.lagradost.cloudstream3.utils.UIHelper.hideKeyboard
 import com.lagradost.cloudstream3.utils.UIHelper.navigate
 import com.lagradost.cloudstream3.utils.UIHelper.popCurrentPage
@@ -97,7 +97,7 @@ class QuickSearchFragment : BaseFragment<QuickSearchBinding>(
         fixSystemBarsPadding(view)
 
         // Fix grid
-        HomeFragment.currentSpan = view.context.getSpanCount()
+        HomeFragment.currentSpan = view.context.getFeedSpanCount()
         binding?.quickSearchAutofitResults?.spanCount = HomeFragment.currentSpan
         HomeFragment.configEvent.invoke()
     }

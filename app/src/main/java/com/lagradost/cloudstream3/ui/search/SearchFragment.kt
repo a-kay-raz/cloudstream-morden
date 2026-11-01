@@ -88,12 +88,12 @@ import com.lagradost.cloudstream3.utils.BackPressedCallbackHelper.attachBackPres
 import com.lagradost.cloudstream3.utils.BackPressedCallbackHelper.detachBackPressedCallback
 import com.lagradost.cloudstream3.utils.UIHelper.applyFloatingNavBottomMargin
 import com.lagradost.cloudstream3.utils.UIHelper.applyFloatingNavBottomPadding
+import com.lagradost.cloudstream3.utils.UIHelper.getFeedSpanCount
 import com.lagradost.cloudstream3.utils.UIHelper.refreshFloatingNavBottomMargin
 import com.lagradost.cloudstream3.utils.UIHelper.refreshFloatingNavBottomPadding
 import com.lagradost.cloudstream3.utils.UIHelper.dismissSafe
 import com.lagradost.cloudstream3.utils.UIHelper.fixSystemBarsPadding
 import com.lagradost.cloudstream3.utils.UIHelper.toPx
-import com.lagradost.cloudstream3.utils.UIHelper.getSpanCount
 import com.lagradost.cloudstream3.utils.UIHelper.hideKeyboard
 import java.util.Locale
 import java.util.concurrent.locks.ReentrantLock
@@ -611,7 +611,9 @@ class SearchFragment : BaseFragment<FragmentSearchBinding>(
             ?.refreshFloatingNavBottomMargin()
 
         // Fix grid
-        currentSpan = view.context.getSpanCount()
+        // Re-audit: width-aware like Feed (2 cols <360dp), not
+        // orientation-only 3/6, so ~320dp phones match Feed.
+        currentSpan = view.context.getFeedSpanCount()
         binding?.searchAutofitResults?.spanCount = currentSpan
         HomeFragment.configEvent.invoke()
     }

@@ -233,8 +233,13 @@ object UIHelper {
      */
     fun Context.getFeedSpanCount(): Int {
         val config = resources.configuration
+        // Re-audit: check width before orientation — a narrow
+        // landscape window (split-screen / foldable, <360dp) got
+        // 6 columns of <60dp each, while the same width in
+        // portrait got 2.
+        if (config.screenWidthDp in 1..<360) return 2
         if (config.orientation == Configuration.ORIENTATION_LANDSCAPE) return 6
-        return if (config.screenWidthDp in 1..<360) 2 else 3
+        return 3
     }
 
     /**

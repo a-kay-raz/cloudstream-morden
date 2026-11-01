@@ -1408,6 +1408,22 @@ open class FullScreenPlayer : AbstractPlayerFragment<FragmentPlayerBinding>(
     }
 
     private fun animateEpisodesOverlay(show: Boolean) {
+        // Re-audit: the episode list is fixed 350dp, so on a
+        // <=360dp portrait phone it covered >=97% of the width
+        // with no outside-tap dismiss area (and overflowed a
+        // 320dp phone). Cap it at min(350dp, 88% screen width),
+        // the same cap applyPlayerOverlaySize() uses for dialogs.
+        playerBinding?.playerEpisodeList?.let { list ->
+            val metrics = list.resources.displayMetrics
+            val cap = minOf(
+                (350 * metrics.density).toInt(),
+                (metrics.widthPixels * 0.88f).toInt()
+            )
+            if (list.layoutParams.width != cap) {
+                list.layoutParams.width = cap
+                list.requestLayout()
+            }
+        }
         playerBinding?.playerEpisodeOverlay?.let { overlay ->
             overlay.animate().cancel()
             (overlay.parent as? ViewGroup)?.layoutTransition = null // Disable layout transitions
