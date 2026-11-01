@@ -123,7 +123,11 @@ class AccountSelectActivity : FragmentActivity(), BiometricCallback {
 
         val binding = ActivityAccountSelectBinding.inflate(layoutInflater)
         setContentView(binding.root)
-        fixSystemBarsPadding(binding.root, padTop = false)
+        // Re-audit: top clearance was only the fixed 36/40dp in
+        // XML, so a taller status bar / landscape cutout could
+        // cover the title and edit button. Inset the root top;
+        // the fixed values below it remain as margins.
+        fixSystemBarsPadding(binding.root, padTop = true)
 
         val recyclerView: AutofitRecyclerView = binding.accountRecyclerView
 

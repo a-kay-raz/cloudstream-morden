@@ -55,6 +55,8 @@
                         android:layout_height="wrap_content"
                         android:layout_gravity="start|center_vertical"
                         android:layout_weight="1"
+                        android:ellipsize="end"
+                        android:maxLines="2"
                         android:textColor="?attr/textColor"
                         android:textSize="16sp"
                         android:textStyle="bold"
@@ -139,7 +141,7 @@
                         android:id="@+id/resultview_preview_description"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-
+                        android:maxLines="3"
                         android:ellipsize="end"
                         android:textColor="?attr/textColor"
                         tools:text="Ryan Quicksave Romano is an eccentric adventurer with a strange power: he can create a save-point in time and redo his life whenever he dies. Arriving in New Rome, the glitzy capital of sin of a rebuilding Europe, he finds the city torn between mega-corporations, sponsored heroes, superpowered criminals, and true monsters. It's a time of chaos, where potions can grant the power to rule the world and dangers lurk everywhere. " />
