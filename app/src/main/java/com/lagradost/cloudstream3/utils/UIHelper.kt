@@ -276,6 +276,31 @@ object UIHelper {
         ViewCompat.requestApplyInsets(this)
     }
 
+    /**
+     * Re-audit fix: [applyFloatingNavBottomPadding] was only called
+     * from onBindingCreated and early-returned in landscape, so a
+     * portrait-created view kept 88dp + systemBottom after rotating
+     * to landscape (where the pill is hidden and the fragment root
+     * already adds its own bottom inset), and a landscape-created
+     * view never got the runtime value in portrait. Call this from
+     * fixLayout: portrait re-installs the listener, landscape
+     * removes it and drops to a 12dp rest gap (the root inset
+     * covers the system bar there).
+     */
+    fun View.refreshFloatingNavBottomPadding() {
+        val ctx = context ?: return
+        if (ctx.resources.configuration.orientation ==
+            Configuration.ORIENTATION_LANDSCAPE
+        ) {
+            ViewCompat.setOnApplyWindowInsetsListener(this, null)
+            updatePadding(
+                bottom = (FLOATING_NAV_GAP_DP * ctx.resources.displayMetrics.density).toInt()
+            )
+            return
+        }
+        applyFloatingNavBottomPadding()
+    }
+
     /** Same runtime footprint as [applyFloatingNavBottomPadding],
      *  as a bottom margin — for views floating above the pill
      *  (Feed mini player, Home Random FAB). */
@@ -303,6 +328,25 @@ object UIHelper {
             insets
         }
         ViewCompat.requestApplyInsets(this)
+    }
+
+    /** Rotation-aware version of [applyFloatingNavBottomMargin]:
+     * landscape removes the listener and drops to a 12dp rest gap,
+     * portrait re-installs the runtime formula. See
+     * [refreshFloatingNavBottomPadding] for why. */
+    fun View.refreshFloatingNavBottomMargin() {
+        val ctx = context ?: return
+        if (ctx.resources.configuration.orientation ==
+            Configuration.ORIENTATION_LANDSCAPE
+        ) {
+            ViewCompat.setOnApplyWindowInsetsListener(this, null)
+            val params = layoutParams as? MarginLayoutParams ?: return
+            params.bottomMargin =
+                (FLOATING_NAV_GAP_DP * ctx.resources.displayMetrics.density).toInt()
+            layoutParams = params
+            return
+        }
+        applyFloatingNavBottomMargin()
     }
 
     fun Fragment.hideKeyboard() {

@@ -35,6 +35,7 @@ import com.lagradost.cloudstream3.ui.settings.Globals.isLayout
 import com.lagradost.cloudstream3.ui.settings.SettingsFragment
 import com.lagradost.cloudstream3.ui.settings.SettingsFragment.Companion.setSystemBarsPadding
 import com.lagradost.cloudstream3.utils.UIHelper.getResourceColor
+import com.lagradost.cloudstream3.utils.UIHelper.refreshFloatingNavBottomPadding
 import com.lagradost.cloudstream3.utils.UIHelper.toPx
 import com.lagradost.cloudstream3.utils.txt
 
@@ -424,15 +425,21 @@ abstract class BasePreferenceFragmentCompat() : PreferenceFragmentCompat() {
             defaultListBottomPadding = list.paddingBottom
         }
         list.clipToPadding = false
+        if (isLayout(PHONE or EMULATOR) && !isLandscape()) {
+            // Re-audit: fixed 100dp was short by systemBottom-16dp
+            // on 3-button nav; use the runtime formula, which is
+            // re-evaluated by onConfigurationChanged.
+            list.refreshFloatingNavBottomPadding()
+            return
+        }
+        // Landscape/TV: remove any runtime listener and restore
+        // the original padding (refresh would set a 12dp gap).
+        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(list, null)
         list.setPadding(
             list.paddingLeft,
             list.paddingTop,
             list.paddingRight,
-            if (isLayout(PHONE or EMULATOR) && !isLandscape()) {
-                100.toPx
-            } else {
-                defaultListBottomPadding ?: list.paddingBottom
-            }
+            defaultListBottomPadding ?: list.paddingBottom
         )
     }
 }

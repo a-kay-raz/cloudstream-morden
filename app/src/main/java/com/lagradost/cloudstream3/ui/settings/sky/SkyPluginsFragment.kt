@@ -30,6 +30,7 @@ import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.lagradost.cloudstream3.utils.SheetChrome
+import com.lagradost.cloudstream3.utils.UIHelper.refreshFloatingNavBottomPadding
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.materialswitch.MaterialSwitch
 import com.google.android.material.tabs.TabLayout
@@ -118,6 +119,10 @@ class SkyPluginsFragment : Fragment() {
                 val list = holder.itemView.findViewById<RecyclerView>(R.id.tab_recycler)
                 val empty = holder.itemView.findViewById<TextView>(R.id.tab_empty)
                 list.layoutManager = LinearLayoutManager(holder.itemView.context)
+                // Re-audit: fixed 92dp in tab_page_list was short
+                // by systemBottom on 3-button nav; use the runtime
+                // formula (see NuvioPluginsFragment for the note).
+                list.refreshFloatingNavBottomPadding()
                 if (position == 0) {
                     installedRecycler = list
                     installedEmpty = empty

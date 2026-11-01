@@ -41,6 +41,8 @@ import com.lagradost.cloudstream3.ui.settings.Globals.isLandscape
 import com.lagradost.cloudstream3.ui.settings.Globals.isLayout
 import com.lagradost.cloudstream3.utils.UIHelper.applyFloatingNavBottomMargin
 import com.lagradost.cloudstream3.utils.UIHelper.applyFloatingNavBottomPadding
+import com.lagradost.cloudstream3.utils.UIHelper.refreshFloatingNavBottomMargin
+import com.lagradost.cloudstream3.utils.UIHelper.refreshFloatingNavBottomPadding
 import com.lagradost.cloudstream3.utils.UIHelper.fixSystemBarsPadding
 import com.lagradost.cloudstream3.utils.UIHelper.getFeedSpanCount
 import com.lagradost.cloudstream3.utils.UIHelper.navigate
@@ -320,6 +322,12 @@ class FeedFragment : BaseFragment<FragmentFeedBinding>(
             padBottom = isLandscape(),
             padLeft = isLayout(TV or EMULATOR)
         )
+        // Re-audit: floating clearance must be re-evaluated on
+        // rotation, not only at creation (see UIHelper refresh).
+        view.findViewById<View>(R.id.feed_recycler)
+            ?.refreshFloatingNavBottomPadding()
+        view.findViewById<View>(R.id.feed_mini_root)
+            ?.refreshFloatingNavBottomMargin()
         // Batch 4: rotation without view recreation must re-span
         // the grid (the lookup below reads spanCount live).
         (view.findViewById<RecyclerView>(R.id.feed_recycler)

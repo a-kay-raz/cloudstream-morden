@@ -53,6 +53,7 @@ import com.lagradost.cloudstream3.utils.DataStoreHelper.currentAccount
 import com.lagradost.cloudstream3.utils.SingleSelectionHelper.showBottomDialog
 import com.lagradost.cloudstream3.utils.UIHelper.fixSystemBarsPadding
 import com.lagradost.cloudstream3.utils.UIHelper.getSpanCount
+import com.lagradost.cloudstream3.utils.UIHelper.refreshFloatingNavBottomMargin
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import java.util.concurrent.CopyOnWriteArrayList
@@ -127,6 +128,11 @@ class LibraryFragment : BaseFragment<FragmentLibraryBinding>(
             padBottom = isLandscape(),
             padLeft = !isLayout(PHONE)
         )
+        // Re-audit: tab strip's fixed 92dp margin overlapped the
+        // pill on 3-button nav; runtime formula in portrait,
+        // 12dp rest gap in landscape (no pill there).
+        view.findViewById<View>(R.id.library_tab_layout)
+            ?.refreshFloatingNavBottomMargin()
     }
 
     @SuppressLint("ResourceType", "CutPasteId")

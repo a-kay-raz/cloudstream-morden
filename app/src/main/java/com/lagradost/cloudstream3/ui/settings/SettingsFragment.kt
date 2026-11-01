@@ -49,6 +49,7 @@ import com.lagradost.cloudstream3.utils.ImageLoader.loadImage
 import com.lagradost.cloudstream3.utils.UIHelper.clipboardHelper
 import com.lagradost.cloudstream3.utils.UIHelper.fixSystemBarsPadding
 import com.lagradost.cloudstream3.utils.UIHelper.navigate
+import com.lagradost.cloudstream3.utils.UIHelper.refreshFloatingNavBottomPadding
 import com.lagradost.cloudstream3.utils.UIHelper.toPx
 import com.lagradost.cloudstream3.utils.getImageFromDrawable
 import com.lagradost.cloudstream3.utils.txt
@@ -484,6 +485,10 @@ class SettingsFragment : BaseFragment<MainSettingsBinding>(
             padBottom = isLandscape(),
             padLeft = isLayout(TV or EMULATOR)
         )
+        // Re-audit: main settings ScrollView's fixed 92dp was
+        // short by systemBottom-16dp on 3-button nav.
+        view.findViewById<View>(R.id.settings_main_scroll)
+            ?.refreshFloatingNavBottomPadding()
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {

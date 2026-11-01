@@ -103,6 +103,8 @@ import com.lagradost.cloudstream3.utils.SubtitleHelper.getFlagFromIso
 import com.lagradost.cloudstream3.utils.TvChannelUtils
 import com.lagradost.cloudstream3.utils.UIHelper.applyFloatingNavBottomMargin
 import com.lagradost.cloudstream3.utils.UIHelper.applyFloatingNavBottomPadding
+import com.lagradost.cloudstream3.utils.UIHelper.refreshFloatingNavBottomMargin
+import com.lagradost.cloudstream3.utils.UIHelper.refreshFloatingNavBottomPadding
 import com.lagradost.cloudstream3.utils.UIHelper.dismissSafe
 import com.lagradost.cloudstream3.utils.UIHelper.fixSystemBarsPadding
 import com.lagradost.cloudstream3.utils.UIHelper.getResourceColor
@@ -1252,6 +1254,11 @@ class HomeFragment : BaseFragment<FragmentHomeBinding>(
             padBottom = isLandscape(),
             padLeft = isLayout(TV or EMULATOR)
         )
+        // Re-audit: re-evaluate floating clearance on rotation.
+        view.findViewById<View>(R.id.home_master_recycler)
+            ?.refreshFloatingNavBottomPadding()
+        view.findViewById<View>(R.id.home_random)
+            ?.refreshFloatingNavBottomMargin()
 
         // Fix grid
         configEvent.invoke()

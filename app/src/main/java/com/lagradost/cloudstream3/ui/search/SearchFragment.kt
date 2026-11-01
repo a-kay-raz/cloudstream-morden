@@ -86,7 +86,10 @@ import com.lagradost.cloudstream3.utils.DataStoreHelper.currentAccount
 import com.lagradost.cloudstream3.utils.SubtitleHelper
 import com.lagradost.cloudstream3.utils.BackPressedCallbackHelper.attachBackPressedCallback
 import com.lagradost.cloudstream3.utils.BackPressedCallbackHelper.detachBackPressedCallback
+import com.lagradost.cloudstream3.utils.UIHelper.applyFloatingNavBottomMargin
 import com.lagradost.cloudstream3.utils.UIHelper.applyFloatingNavBottomPadding
+import com.lagradost.cloudstream3.utils.UIHelper.refreshFloatingNavBottomMargin
+import com.lagradost.cloudstream3.utils.UIHelper.refreshFloatingNavBottomPadding
 import com.lagradost.cloudstream3.utils.UIHelper.dismissSafe
 import com.lagradost.cloudstream3.utils.UIHelper.fixSystemBarsPadding
 import com.lagradost.cloudstream3.utils.UIHelper.toPx
@@ -594,6 +597,18 @@ class SearchFragment : BaseFragment<FragmentSearchBinding>(
             padBottom = isLandscape(),
             padLeft = isLayout(TV or EMULATOR)
         )
+        // Re-audit: re-evaluate floating clearance on rotation.
+        // Suggestions use a margin, not padding: it is a
+        // wrap_content overlay whose background would otherwise
+        // paint a blank 88dp+ band below the last suggestion.
+        view.findViewById<View>(R.id.search_autofit_results)
+            ?.refreshFloatingNavBottomPadding()
+        view.findViewById<View>(R.id.search_master_recycler)
+            ?.refreshFloatingNavBottomPadding()
+        view.findViewById<View>(R.id.search_history_recycler)
+            ?.refreshFloatingNavBottomPadding()
+        view.findViewById<View>(R.id.search_suggestions_recycler)
+            ?.refreshFloatingNavBottomMargin()
 
         // Fix grid
         currentSpan = view.context.getSpanCount()
@@ -644,7 +659,10 @@ class SearchFragment : BaseFragment<FragmentSearchBinding>(
             searchAutofitResults.applyFloatingNavBottomPadding()
             searchMasterRecycler.applyFloatingNavBottomPadding()
             searchHistoryRecycler.applyFloatingNavBottomPadding()
-            searchSuggestionsRecycler.applyFloatingNavBottomPadding()
+            // Re-audit: suggestions are a wrap_content overlay, so
+            // a bottom margin caps its height instead of painting
+            // a blank padded band below the last suggestion.
+            searchSuggestionsRecycler.applyFloatingNavBottomMargin()
             searchLoadingBar.alpha = 0f
         }
 

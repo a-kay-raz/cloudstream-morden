@@ -34,6 +34,7 @@ import com.lagradost.cloudstream3.stremio.StremioParse
 import com.lagradost.cloudstream3.stremio.StremioProviders
 import com.lagradost.cloudstream3.stremio.StremioTransport
 import com.lagradost.cloudstream3.utils.ImageLoader.loadImage
+import com.lagradost.cloudstream3.utils.UIHelper.refreshFloatingNavBottomPadding
 import coil3.request.transformations
 import coil3.transform.CircleCropTransformation
 import kotlinx.coroutines.launch
@@ -114,6 +115,10 @@ class StremioAddonsFragment : Fragment() {
                     val list = holder.itemView.findViewById<RecyclerView>(R.id.tab_recycler)
                     val empty = holder.itemView.findViewById<TextView>(R.id.tab_empty)
                     list.layoutManager = LinearLayoutManager(holder.itemView.context)
+                    // Re-audit: fixed 92dp in tab_page_list was short
+                    // by systemBottom on 3-button nav; use the runtime
+                    // formula (see NuvioPluginsFragment for the note).
+                    list.refreshFloatingNavBottomPadding()
                     list.adapter = adapter
                     empty.setText(R.string.stremio_addons_empty)
                     installedEmpty = empty

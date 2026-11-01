@@ -47,6 +47,7 @@ import com.lagradost.cloudstream3.utils.DOWNLOAD_EPISODE_CACHE
 import com.lagradost.cloudstream3.utils.DataStore.getFolderName
 import com.lagradost.cloudstream3.utils.UIHelper.dismissSafe
 import com.lagradost.cloudstream3.utils.UIHelper.fixSystemBarsPadding
+import com.lagradost.cloudstream3.utils.UIHelper.refreshFloatingNavBottomMargin
 import com.lagradost.cloudstream3.utils.UIHelper.hideKeyboard
 import com.lagradost.cloudstream3.utils.UIHelper.navigate
 import com.lagradost.cloudstream3.utils.UIHelper.setAppBarNoScrollFlagsOnTV
@@ -81,6 +82,11 @@ class DownloadFragment : BaseFragment<FragmentDownloadsBinding>(
             padBottom = isLandscape(),
             padLeft = isLayout(TV or EMULATOR)
         )
+        // Re-audit: queue bar's fixed 92dp margin overlapped the
+        // pill by systemBottom-16dp on 3-button nav; use the
+        // runtime formula (landscape drops to a 12dp rest gap).
+        view.findViewById<View>(R.id.download_queue_button)
+            ?.refreshFloatingNavBottomMargin()
     }
 
     override fun onBindingCreated(binding: FragmentDownloadsBinding) {
