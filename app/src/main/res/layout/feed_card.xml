@@ -13,7 +13,7 @@
     android:clickable="true"
     android:focusable="true"
     app:cardBackgroundColor="?attr/primaryGrayBackground"
-    app:cardCornerRadius="12dp"
+    app:cardCornerRadius="16dp"
     app:cardElevation="0dp">
 
     <androidx.constraintlayout.widget.ConstraintLayout

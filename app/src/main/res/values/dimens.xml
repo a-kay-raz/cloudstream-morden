@@ -6,7 +6,10 @@
     <!-- Phase 8.84: home-row posters get a tighter corner than the
          shared rounded_image_radius (20dp) — ~65% of it. Home-specific
          child layouts only (home_result_grid*, home_result_big_grid). -->
-    <dimen name="home_poster_radius">13dp</dimen>
+    <!-- Glass Phase 2: poster radius unified at 16dp (was 13dp) so
+         home, feed and skeleton posters share one corner language
+         with the 20dp cards/sheets/dialogs. -->
+    <dimen name="home_poster_radius">16dp</dimen>
     <dimen name="rounded_button_radius">10dp</dimen>
 
     <dimen name="navbar_height">0dp</dimen>
