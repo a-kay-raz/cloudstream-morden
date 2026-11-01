@@ -5,7 +5,7 @@ import android.content.Context
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.Drawable
 import android.os.Build
 import android.os.Bundle
 import android.util.AttributeSet
@@ -20,7 +20,6 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.annotation.DrawableRes
-import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
@@ -164,7 +163,7 @@ class FloatingNavView @JvmOverloads constructor(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
             )
-            setBackgroundResource(R.drawable.bg_floating_nav_pill)
+            background = GlassChrome.pillBackground(context)
             setPadding(dp(6f), dp(6f), dp(6f), dp(6f))
             elevation = dp(8f).toFloat()
         }
@@ -309,26 +308,13 @@ class FloatingNavView @JvmOverloads constructor(
         return itemViews.getOrNull(index)
     }
 
-    /** The organic blob from the approved preview (border-radius
-     *  58% 42% 55% 45% / 52% 55% 45% 48% on the settled ~110x50dp item),
-     *  expressed as fixed per-corner radii so the shape reads the same
-     *  on every tab. Radii sums stay below the smallest expanded width
-     *  and the item height, so nothing clamps at rest; mid-animation
-     *  the platform scales them down, which is what morphs the shape
-     *  from pill to blob as the item springs open. Fill is the settled
-     *  grey (@color/extButtonBackground, #262626). A fresh instance per
-     *  application — a Drawable can only live on one View at a time. */
-    private fun makeBlobBackground(): GradientDrawable {
-        return GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            setColor(ContextCompat.getColor(context, R.color.extButtonBackground))
-            cornerRadii = floatArrayOf(
-                dp(56f).toFloat(), dp(24f).toFloat(), // top-left
-                dp(44f).toFloat(), dp(25f).toFloat(), // top-right
-                dp(54f).toFloat(), dp(21f).toFloat(), // bottom-right
-                dp(46f).toFloat(), dp(22f).toFloat(), // bottom-left
-            )
-        }
+    /** The organic blob from the approved preview, now as glass
+     *  (see GlassChrome): same per-corner radii, translucent
+     *  tonal-grey fill instead of opaque #262626. A fresh instance
+     *  per application — a Drawable can only live on one View at
+     *  a time. */
+    private fun makeBlobBackground(): Drawable {
+        return GlassChrome.blobBackground(context)
     }
 
     private fun refreshItemBackgrounds() {

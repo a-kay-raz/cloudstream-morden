@@ -46,6 +46,7 @@ import com.lagradost.cloudstream3.databinding.PlayerCustomLayoutBinding
 import com.lagradost.cloudstream3.databinding.SpeedDialogBinding
 import com.lagradost.cloudstream3.databinding.SubtitleOffsetBinding
 import com.lagradost.cloudstream3.mvvm.logError
+import com.lagradost.cloudstream3.ui.GlassChrome
 import com.lagradost.cloudstream3.ui.player.GeneratorPlayer.Companion.subsProvidersIsActive
 import com.lagradost.cloudstream3.ui.player.source_priority.QualityDataHelper
 import com.lagradost.cloudstream3.ui.settings.Globals.EMULATOR
@@ -1157,6 +1158,25 @@ open class FullScreenPlayer : AbstractPlayerFragment<FragmentPlayerBinding>(
         // Batch 4: first fixLayout ran before playerBinding
         // existed, so apply the player insets now.
         applyPlayerInsets()
+
+        // Glass Phase 1: player chrome only, controls untouched.
+        // Bottom bar gets a full glass bar background; the title
+        // holder gets a centred glass pill (it already sits in a
+        // 80dp-margined column, so it reads as a top bar). The
+        // top holder itself is NOT glassed: it is match_parent
+        // in both dimensions, so a background there would tint
+        // the whole video frame.
+        GlassChrome.applyBarBackground(playerBinding.bottomPlayerBar)
+        playerBinding.playerVideoTitleHolder.let { titleHolder ->
+            titleHolder.background = GlassChrome.barBackground(titleHolder.context)
+            val density = titleHolder.context.resources.displayMetrics.density
+            titleHolder.setPadding(
+                (16f * density).toInt(),
+                (8f * density).toInt(),
+                (16f * density).toInt(),
+                (8f * density).toInt(),
+            )
+        }
 
         super.onBindingCreated(binding, savedInstanceState)
 

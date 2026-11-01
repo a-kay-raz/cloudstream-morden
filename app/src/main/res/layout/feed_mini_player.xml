@@ -20,8 +20,8 @@
     android:layout_marginEnd="12dp"
     android:layout_marginBottom="92dp"
     android:visibility="gone"
-    app:cardBackgroundColor="#FF212121"
-    app:cardCornerRadius="12dp"
+    app:cardBackgroundColor="#CC212121"
+    app:cardCornerRadius="20dp"
     app:cardElevation="8dp">
 
     <LinearLayout

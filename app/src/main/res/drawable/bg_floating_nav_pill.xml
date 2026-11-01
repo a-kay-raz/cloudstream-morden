@@ -1,11 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Phase 8.99d: floating bottom bar pill (approved preview v6):
-     near-black fill, subtle light stroke, fully rounded ends. -->
+     near-black fill, subtle light stroke, fully rounded ends.
+     Glass Phase 1: fill is now translucent (#CC) with a light
+     stroke, so content underneath shows through. The runtime
+     pill background is GlassChrome.pillBackground (same values
+     plus a top highlight); this drawable is the fallback. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
     <corners android:radius="40dp" />
-    <solid android:color="#141414" />
+    <solid android:color="#CC141414" />
     <stroke
         android:width="1dp"
-        android:color="#2C2C2C" />
+        android:color="#40FFFFFF" />
 </shape>
