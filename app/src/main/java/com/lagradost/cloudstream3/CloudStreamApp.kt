@@ -110,12 +110,19 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
 
     /**
      * Phase 8.48 (his request): the app ships a default backup
-     * (assets/pro_default_backup.json — settings, repositories
-     * and customization only; personal watch/download data was
-     * stripped) and restores it automatically ONCE on a fresh
-     * install, so nobody has to download a txt file and restore
-     * it by hand for the settings to work properly. Existing
-     * installs keep their own data untouched.
+     * (assets/pro_default_backup.json — settings and customization
+     * only; personal watch/download data was stripped) and restores
+     * it automatically ONCE on a fresh install, so nobody has to
+     * download a txt file and restore it by hand for the settings
+     * to work properly. Existing installs keep their own data
+     * untouched.
+     *
+     * No providers by default: the backup's repository list is
+     * empty and there is no bundled plugin download any more, so
+     * a fresh install starts with no providers at all. The user
+     * adds their own repositories/providers from the setup /
+     * Extensions screens; the no-plugin branch in MainActivity
+     * sends a fresh user straight to setup_extensions.
      */
     private fun applyDefaultBackupOnce() {
         try {
@@ -137,12 +144,6 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
                     restoreSettings = true,
                     restoreDataStore = true
                 )
-                // The backup format carries no plugin list, so
-                // the bundled default plugins are downloaded
-                // separately by MainActivity on first launch.
-                marker.edit()
-                    .putBoolean(DEFAULT_PLUGINS_PENDING, true)
-                    .apply()
             }
             marker.edit()
                 .putBoolean(DEFAULT_BACKUP_MARKER, true)
@@ -166,9 +167,6 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
         const val DEFAULT_BACKUP_MARKER =
             "pro_default_backup_applied_v1"
         const val DEFAULT_BACKUP_ASSET = "pro_default_backup.json"
-        const val DEFAULT_PLUGINS_PENDING =
-            "pro_default_plugins_pending_v1"
-        const val DEFAULT_PLUGINS_ASSET = "pro_default_plugins.json"
 
         var exceptionHandler: ExceptionHandler? = null
 
