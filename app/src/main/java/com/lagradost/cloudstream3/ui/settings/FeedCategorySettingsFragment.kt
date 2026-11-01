@@ -50,14 +50,22 @@ class FeedCategorySettingsFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         // Status-bar inset, same fix as HomeCustomListsFragment.
+        // Re-audit: this listener only added the top inset, and
+        // this destination has no floating nav, so the bottom
+        // (and side) insets were never applied: 3-button nav
+        // covered ~32dp of the last category rows. Add all
+        // system-bar insets to the existing 16dp root padding.
+        val baseLeft = view.paddingLeft
         val baseTop = view.paddingTop
+        val baseRight = view.paddingRight
+        val baseBottom = view.paddingBottom
         ViewCompat.setOnApplyWindowInsetsListener(view) { v, insets ->
-            val top = insets.getInsets(
-                WindowInsetsCompat.Type.statusBars()
-            ).top
+            val bars = insets.getInsets(
+                WindowInsetsCompat.Type.systemBars()
+            )
             v.setPadding(
-                v.paddingLeft, baseTop + top,
-                v.paddingRight, v.paddingBottom
+                baseLeft + bars.left, baseTop + bars.top,
+                baseRight + bars.right, baseBottom + bars.bottom
             )
             insets
         }

@@ -60,7 +60,11 @@ class FeedBatchDownloadFragment : BaseFragment<FragmentFeedDownloadBinding>(
     private lateinit var episodeAdapter: EpisodeAdapter
 
     override fun fixLayout(view: View) {
-        fixSystemBarsPadding(view, padBottom = false, padLeft = false)
+        // Re-audit: this page has no floating nav either, and its
+        // 52dp Download button sits in normal flow at the bottom
+        // with only 16dp layout padding — 3-button nav covered
+        // ~32dp of it. Always inset bottom and left.
+        fixSystemBarsPadding(view, padBottom = true, padLeft = true)
     }
 
     override fun onBindingCreated(binding: FragmentFeedDownloadBinding) {

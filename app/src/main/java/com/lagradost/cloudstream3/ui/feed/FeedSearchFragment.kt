@@ -108,7 +108,11 @@ class FeedSearchFragment : BaseFragment<FragmentFeedSearchBinding>(
         // portrait phones report a 0 left inset, so no change.
         fixSystemBarsPadding(
             view,
-            padBottom = isLandscape(),
+            // Re-audit: this destination has no floating nav in
+            // portrait, so the only bottom protection was the
+            // system inset, which was off in portrait: 3-button
+            // nav covered ~32dp of the list. Always inset bottom.
+            padBottom = true,
             padLeft = true
         )
         (view.findViewById<androidx.recyclerview.widget.RecyclerView>(

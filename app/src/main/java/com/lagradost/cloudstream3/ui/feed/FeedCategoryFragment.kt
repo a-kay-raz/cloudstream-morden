@@ -60,7 +60,9 @@ class FeedCategoryFragment : BaseFragment<FragmentFeedCategoryBinding>(
         // FeedSearchFragment for the landscape-cutout reason.
         fixSystemBarsPadding(
             view,
-            padBottom = isLandscape(),
+            // Re-audit: same as FeedSearchFragment — no floating
+            // nav in portrait, so bottom inset must be on.
+            padBottom = true,
             padLeft = true
         )
         (view.findViewById<androidx.recyclerview.widget.RecyclerView>(
