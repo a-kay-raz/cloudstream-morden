@@ -1166,16 +1166,26 @@ open class FullScreenPlayer : AbstractPlayerFragment<FragmentPlayerBinding>(
         // top holder itself is NOT glassed: it is match_parent
         // in both dimensions, so a background there would tint
         // the whole video frame.
-        GlassChrome.applyBarBackground(playerBinding.bottomPlayerBar)
-        playerBinding.playerVideoTitleHolder.let { titleHolder ->
-            titleHolder.background = GlassChrome.barBackground(titleHolder.context)
-            val density = titleHolder.context.resources.displayMetrics.density
-            titleHolder.setPadding(
-                (16f * density).toInt(),
-                (8f * density).toInt(),
-                (16f * density).toInt(),
-                (8f * density).toInt(),
-            )
+        // playerBinding is a nullable var, so it must be read
+        // through a safe call (the previous version used it
+        // directly and broke compilePrereleaseDebugKotlin in
+        // run 41278519061 with "Only safe (?.) or non-null
+        // asserted (!!.) calls are allowed on a nullable
+        // receiver of type 'PlayerCustomLayoutBinding?'").
+        playerBinding?.let { pb ->
+            GlassChrome.applyBarBackground(pb.bottomPlayerBar)
+            pb.playerVideoTitleHolder.let { titleHolder ->
+                titleHolder.background =
+                    GlassChrome.barBackground(titleHolder.context)
+                val density =
+                    titleHolder.context.resources.displayMetrics.density
+                titleHolder.setPadding(
+                    (16f * density).toInt(),
+                    (8f * density).toInt(),
+                    (16f * density).toInt(),
+                    (8f * density).toInt(),
+                )
+            }
         }
 
         super.onBindingCreated(binding, savedInstanceState)
